@@ -1,7 +1,8 @@
+google-generativeai>=0.8.0
 streamlit
 yfinance
-google-generativeai
 pandas
 numpy
 scipy
 plotly
+
