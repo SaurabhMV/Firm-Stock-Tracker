@@ -29,7 +29,7 @@ def get_analyst_data(ticker):
 def generate_pro_report(symbol, info, tech, news, api_key):
     genai.configure(api_key=api_key)
     # Using the 'latest' alias as discussed
-    model = genai.GenerativeModel("gemini-3-flash") 
+    model = genai.GenerativeModel("gemini-2.5-flash") 
     
     prompt = f"""
     Act as a Hedge Fund Strategy Lead. Analyze {symbol} for a long-term investor.
