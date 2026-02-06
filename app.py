@@ -47,19 +47,26 @@ class StockAnalyzer:
 
     def generate_report(self, api_key):
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
         
+        # 1. AUTO-DISCOVERY: Find the latest supported Flash model
+        available_models = [
+            m.name for m in genai.list_models() 
+            if 'generateContent' in m.supported_generation_methods 
+            and 'flash' in m.name.lower()
+        ]
+        
+        # Pick the most recent one (usually the last in the list) or use the alias
+        # We use 'gemini-flash-latest' as the primary, but fallback to discovery
+        target_model = "gemini-flash-latest" if "models/gemini-flash-latest" in available_models else available_models[-1]
+        
+        model = genai.GenerativeModel(target_model)
+        
+        # ... rest of your prompt and content generation ...
         tech = self.calculate_technicals()
         news = [n.get('title') for n in self.ticker.news[:8]]
         
-        prompt = f"""
-        Analyze {self.symbol} as a Senior Equity Researcher.
-        Data: {self.info.get('longBusinessSummary')}
-        Metrics: P/E {self.info.get('forwardPE')}, Margin {self.info.get('profitMargins')}, RSI {tech['RSI']:.2f}.
-        Recent News: {news}
+        prompt = f"Analyze {self.symbol}..." # (Your existing prompt here)
         
-        Provide: 1. SWOT Analysis, 2. Technical Outlook, 3. Sentiment Score (-1 to 1), 4. Final Recommendation.
-        """
         return model.generate_content(prompt).text
 
 # --- APP UI ---
