@@ -113,14 +113,15 @@ if analyze_btn:
             
             # ... inside your Tab 3 logic ...
             with tab3:
+            # Line 116: Everything below MUST be indented 4 spaces
             st.subheader("📰 Market-Moving News Feed")
-            news_items = ticker.news[:8]
             
+            news_items = ticker.news[:8]
             if not news_items:
                 st.info("No recent news found for this ticker.")
             else:
+                # Note: Nested blocks (like for loops) need another level of indent!
                 for n in news_items:
-                    # 1. Clean Title and Link
                     title = n.get('title', 'No Title')
                     raw_link = n.get('link', '#')
                     # Ensure link is absolute
