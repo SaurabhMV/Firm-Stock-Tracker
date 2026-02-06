@@ -1,120 +1,103 @@
 import streamlit as st
 import yfinance as yf
-import time
-import requests
 import pandas as pd
+import numpy as np
+import google.generativeai as genai
+from scipy.signal import argrelextrema
+import plotly.graph_objects as go
 
-# --- Page Config ---
-st.set_page_config(page_title="Smart Interval Monitor", page_icon="⏲️", layout="wide")
-st.title("⏲️ Responsive Stock Monitor")
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="AI Stock Analyst", layout="wide")
 
-# --- Sidebar ---
-st.sidebar.header("Settings")
-bot_token = st.sidebar.text_input("Telegram Bot Token", type="password")
-chat_id = st.sidebar.text_input("Authorized Chat ID")
-ticker_input = st.sidebar.text_input("Tickers", value="AAPL, TSLA, ZGLD.TO")
-drop_threshold = st.sidebar.slider("Alert Threshold (%)", 1, 20, 5)
+# --- SIDEBAR: SETTINGS ---
+with st.sidebar:
+    st.title("⚙️ Configuration")
+    api_key = st.text_input("Enter Gemini API Key", type="password")
+    ticker_input = st.text_input("Stock Ticker", value="AAPL").upper()
+    comp_input = st.text_input("Competitor Ticker (Optional)").upper()
+    analyze_btn = st.button("Run Deep Analysis")
 
-# --- RE-ADDED FEATURE: Check Interval ---
-check_interval = st.sidebar.number_input(
-    "Refresh Rate (seconds)", 
-    min_value=30, 
-    value=120, 
-    help="How often to check stock prices. Bot remains responsive every 10s."
-)
+# --- CORE LOGIC ---
+class StockAnalyzer:
+    def __init__(self, ticker_symbol, competitor_symbol=None):
+        self.ticker = yf.Ticker(ticker_symbol)
+        self.symbol = ticker_symbol
+        self.comp_symbol = competitor_symbol
+        self.info = self.ticker.info
+        self.history = self.ticker.history(period="1y")
 
-# --- State Management ---
-if 'running' not in st.session_state: st.session_state.running = False
-if 'last_update_id' not in st.session_state: st.session_state.last_update_id = 0
-if 'last_fetch_time' not in st.session_state: st.session_state.last_fetch_time = 0
-if 'results_cache' not in st.session_state: st.session_state.results_cache = []
+    def calculate_technicals(self):
+        df = self.history.copy()
+        # RSI
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        df['RSI'] = 100 - (100 / (1 + (gain / loss)))
+        
+        # Support/Resistance
+        res_idx = argrelextrema(df.Close.values, np.greater_equal, order=20)[0]
+        sup_idx = argrelextrema(df.Close.values, np.less_equal, order=20)[0]
+        
+        return {
+            "Price": df['Close'].iloc[-1],
+            "RSI": df['RSI'].iloc[-1],
+            "Resistances": [df.Close.iloc[i] for i in res_idx[-3:]],
+            "Supports": [df.Close.iloc[i] for i in sup_idx[-3:]]
+        }
 
-# --- Helper Functions ---
-def send_telegram(msg):
-    if bot_token and chat_id:
-        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        try: requests.post(url, json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"})
-        except: pass
+    def generate_report(self, api_key):
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        
+        tech = self.calculate_technicals()
+        news = [n.get('title') for n in self.ticker.news[:8]]
+        
+        prompt = f"""
+        Analyze {self.symbol} as a Senior Equity Researcher.
+        Data: {self.info.get('longBusinessSummary')}
+        Metrics: P/E {self.info.get('forwardPE')}, Margin {self.info.get('profitMargins')}, RSI {tech['RSI']:.2f}.
+        Recent News: {news}
+        
+        Provide: 1. SWOT Analysis, 2. Technical Outlook, 3. Sentiment Score (-1 to 1), 4. Final Recommendation.
+        """
+        return model.generate_content(prompt).text
 
-def fetch_data(tickers):
-    results = []
-    for symbol in tickers:
+# --- APP UI ---
+st.title("🤖 AI-Powered Stock Intelligence")
+
+if analyze_btn:
+    if not api_key:
+        st.error("Please provide a Gemini API Key in the sidebar.")
+    else:
         try:
-            t = yf.Ticker(symbol)
-            df_3d = t.history(period='3d', interval='1h')
-            df_today = t.history(period='1d', interval='1m')
-            if not df_3d.empty and not df_today.empty:
-                curr = df_today['Close'].iloc[-1]
-                h3 = df_3d['High'].max()
-                open_p = df_today['Open'].iloc[0]
-                pullback = ((curr - h3) / h3) * 100
-                day_chg = ((curr - open_p) / open_p) * 100
-                results.append({"Ticker": symbol, "Price": curr, "Pullback": pullback, "DayChg": day_chg})
-        except: continue
-    return results
-
-def check_bot_commands():
-    """Polls Telegram for commands without blocking the UI."""
-    if not bot_token or not chat_id: return False
-    url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
-    params = {"offset": st.session_state.last_update_id + 1, "timeout": 1}
-    try:
-        r = requests.get(url, params=params).json()
-        if r.get("result"):
-            for update in r["result"]:
-                st.session_state.last_update_id = update["update_id"]
-                msg = update.get("message", {})
-                if str(msg.get("chat", {}).get("id")) != str(chat_id).strip(): continue
-                text = msg.get("text", "").lower()
+            with st.spinner(f"Analyzing {ticker_input}..."):
+                analyzer = StockAnalyzer(ticker_input, comp_input)
                 
-                if "/start" in text:
-                    st.session_state.running = True
-                    send_telegram("🚀 *Authorized: Monitor Started*")
-                    return True
-                elif "/stop" in text:
-                    st.session_state.running = False
-                    send_telegram("🛑 *Authorized: Monitor Stopped*")
-                    return True
-                elif "/status" in text:
-                    send_telegram("⌛ *Fetching current status...*")
-                    data = fetch_data([t.strip().upper() for t in ticker_input.split(",")])
-                    status_msg = "📊 *Current Status:*\n"
-                    for i in data: status_msg += f"*{i['Ticker']}*: ${i['Price']:.2f} ({i['Pullback']:.2f}%)\n"
-                    send_telegram(status_msg)
-    except: pass
-    return False
+                # Layout: Two columns
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.subheader(f"📈 {ticker_input} Price Action")
+                    fig = go.Figure(data=[go.Candlestick(x=analyzer.history.index,
+                                    open=analyzer.history['Open'],
+                                    high=analyzer.history['High'],
+                                    low=analyzer.history['Low'],
+                                    close=analyzer.history['Close'])])
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    st.subheader("📊 Key Metrics")
+                    metrics = analyzer.info
+                    m_col1, m_col2 = st.columns(2)
+                    m_col1.metric("Current Price", f"${metrics.get('currentPrice', 'N/A')}")
+                    m_col1.metric("Forward P/E", metrics.get('forwardPE', 'N/A'))
+                    m_col2.metric("Market Cap", f"{metrics.get('marketCap', 0):,}")
+                    m_col2.metric("Target Price", f"${metrics.get('targetMeanPrice', 'N/A')}")
 
-# --- Main App Execution ---
-# Always check commands first
-if check_bot_commands(): st.rerun()
-
-status_txt = "🟢 RUNNING" if st.session_state.running else "🔴 STOPPED"
-st.sidebar.markdown(f"**System Status:** {status_txt}")
-
-if st.session_state.running:
-    tickers = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
-    
-    # 1. Timer Logic: Only fetch if interval has passed
-    current_time = time.time()
-    if (current_time - st.session_state.last_fetch_time) >= check_interval:
-        with st.spinner("Updating prices..."):
-            st.session_state.results_cache = fetch_data(tickers)
-            st.session_state.last_fetch_time = current_time
-            
-            # 2. Alert Logic
-            for item in st.session_state.results_cache:
-                if item['Pullback'] <= -drop_threshold:
-                    send_telegram(f"🚨 *{item['Ticker']} ALERT*\nDown `{abs(item['Pullback']):.2f}%` from 3D High.")
-
-    # 3. Display Data
-    if st.session_state.results_cache:
-        st.dataframe(pd.DataFrame(st.session_state.results_cache), use_container_width=True, hide_index=True)
-        st.caption(f"Last Price Sync: {time.strftime('%H:%M:%S')}. Next sync in {int(check_interval - (time.time() - st.session_state.last_fetch_time))}s.")
-
-    # 4. Short Sleep for Bot Responsiveness
-    time.sleep(10)
-    st.rerun()
-else:
-    st.info("System Standby. Bot commands: `/start`, `/stop`, `/status`")
-    time.sleep(10)
-    st.rerun()
+                st.divider()
+                st.subheader("🧠 Gemini Intelligence Report")
+                report = analyzer.generate_report(api_key)
+                st.markdown(report)
+                
+        except Exception as e:
+            st.error(f"Error fetching data for {ticker_input}: {e}")
