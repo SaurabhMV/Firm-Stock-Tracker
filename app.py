@@ -99,9 +99,38 @@ if analyze_btn:
                 report = generate_pro_report(ticker_input, ticker.info, tech_data, news_titles, api_key)
                 st.markdown(report)
 
+            import re
+
+            def sanitize_link(link):
+                """Ensures the link is a valid absolute URL."""
+                if not link:
+                    return "#"
+                # If it starts with a tracking redirect, you could try to strip it,
+                # but usually just ensuring it's absolute helps.
+                if link.startswith('/'):
+                    return f"https://finance.yahoo.com{link}"
+                return link
+            
+            # ... inside your Tab 3 logic ...
             with tab3:
                 st.subheader("Latest Market Buzz")
-                for n in ticker.news[:5]:
-                    title = n.get('title', 'No Title Available')
-                    link = n.get('link', '#')
-                    st.write(f"🔗 [{title}]({link})")
+                news_items = ticker.news[:8] # Get a few more to be safe
+                
+                if not news_items:
+                    st.info("No recent news found.")
+                else:
+                    for n in news_items:
+                        # Use the .get() method we discussed earlier for safety
+                        raw_title = n.get('title', 'Read full story')
+                        raw_link = n.get('link', '#')
+                        
+                        # Sanitize the link
+                        clean_link = sanitize_link(raw_link)
+                        
+                        # Using st.markdown for better link reliability
+                        st.markdown(f"⭐ **[{raw_title}]({clean_link})**")
+                        
+                        # Optional: Add the publisher if available for more context
+                        publisher = n.get('publisher', 'Finance News')
+                        st.caption(f"Source: {publisher}")
+                        st.divider()
