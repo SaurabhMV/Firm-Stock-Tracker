@@ -63,14 +63,25 @@ def calculate_technicals(history):
     }
 
 def sanitize_link(link):
-    """Fixes broken or relative Yahoo Finance links."""
-    if not link:
-        return "#"
-    # If it's a relative path, prepend the domain
-    if link.startswith('/'):
+    """
+    Forces all links to be absolute URLs. 
+    Fixes the 'redirect to Streamlit' issue.
+    """
+    if not link or link == "#":
+        # Fallback: Just go to Yahoo Finance homepage if link is missing
+        return "https://finance.yahoo.com"
+    
+    # 1. If it already has http/https, it's good.
+    if link.lower().startswith("http"):
+        return link
+    
+    # 2. If it starts with a slash (e.g., "/news/story..."), prepend domain
+    if link.startswith("/"):
         return f"https://finance.yahoo.com{link}"
-    return link
-
+        
+    # 3. If it's a relative path without slash (e.g., "news/story..."), prepend domain + slash
+    return f"https://finance.yahoo.com/{link}"
+    
 def generate_pro_report(symbol, info, tech, news, api_key):
     """Generates the AI analysis using dynamic model discovery."""
     genai.configure(api_key=api_key)
@@ -173,10 +184,11 @@ if analyze_btn:
                     st.markdown(report)
 
                 # TAB 3: NEWS FEED (Fixed Indentation & Links)
+                # TAB 3: NEWS FEED (Fixed Links)
                 with tab3:
                     st.subheader("📰 Market-Moving News Feed")
                     
-                    news_items = ticker.news[:10] # Fetch top 10
+                    news_items = ticker.news[:10]
                     
                     if not news_items:
                         st.info("No recent news found for this ticker.")
@@ -185,13 +197,15 @@ if analyze_btn:
                             # 1. Safe Data Extraction
                             title = n.get('title', 'No Title Available')
                             raw_link = n.get('link', '#')
+                            
+                            # --- CRITICAL FIX HERE ---
                             clean_link = sanitize_link(raw_link)
+                            
                             publisher = n.get('publisher', 'Finance News')
                             
                             # 2. Thumbnail Logic
                             thumbnail_url = None
                             if 'thumbnail' in n and 'resolutions' in n['thumbnail']:
-                                # Get the last (highest res) image
                                 resolutions = n['thumbnail'].get('resolutions', [])
                                 if resolutions:
                                     thumbnail_url = resolutions[-1].get('url')
@@ -204,11 +218,15 @@ if analyze_btn:
                                     if thumbnail_url:
                                         st.image(thumbnail_url, use_container_width=True)
                                     else:
-                                        st.write("🗞️") # Fallback icon
+                                        st.write("🗞️")
 
                                 with col_txt:
+                                    # Markdown link (Backup)
                                     st.markdown(f"**[{title}]({clean_link})**")
                                     st.caption(f"Source: {publisher}")
+                                    
+                                    # Button Link (Primary)
+                                    # If this fails, the markdown link above usually works
                                     st.link_button("Read Full Story", clean_link)
                                 
                                 st.divider()
