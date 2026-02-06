@@ -102,4 +102,6 @@ if analyze_btn:
             with tab3:
                 st.subheader("Latest Market Buzz")
                 for n in ticker.news[:5]:
-                    st.write(f"🔗 [{n['title']}]({n['link']})")
+                    title = n.get('title', 'No Title Available')
+                    link = n.get('link', '#')
+                    st.write(f"🔗 [{title}]({link})")
