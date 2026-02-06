@@ -1,3 +1,7 @@
 streamlit
 yfinance
-requests
+google-generativeai
+pandas
+numpy
+scipy
+plotly
