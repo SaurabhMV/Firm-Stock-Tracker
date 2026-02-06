@@ -47,7 +47,7 @@ class StockAnalyzer:
 
     def generate_report(self, api_key):
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         
         tech = self.calculate_technicals()
         news = [n.get('title') for n in self.ticker.news[:8]]
