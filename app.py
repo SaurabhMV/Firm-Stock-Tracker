@@ -28,29 +28,34 @@ def get_analyst_data(ticker):
 
 def generate_pro_report(symbol, info, tech, news, api_key):
     genai.configure(api_key=api_key)
-    # Using the 'latest' alias as discussed
-    model = genai.GenerativeModel("gemini-2.5-flash") 
     
+    # --- DYNAMIC DISCOVERY ---
+    try:
+        # Get all models that support generating content and are "Flash" models
+        models = [
+            m.name for m in genai.list_models() 
+            if 'generateContent' in m.supported_generation_methods 
+            and 'flash' in m.name.lower()
+        ]
+        # Sort to ensure we get the highest version number (e.g., Gemini 3 over 2.5)
+        models.sort()
+        # Use the newest one found, or fallback to the universal alias
+        target_model = models[-1] if models else "models/gemini-flash-latest"
+    except Exception:
+        target_model = "models/gemini-flash-latest"
+
+    model = genai.GenerativeModel(target_model)
+    
+    # --- PREPARE PROMPT ---
     prompt = f"""
     Act as a Hedge Fund Strategy Lead. Analyze {symbol} for a long-term investor.
-    
-    CONTEXT:
-    - Business: {info.get('longBusinessSummary')[:1000]}
-    - Fundamentals: P/E {info.get('forwardPE')}, Margin {info.get('profitMargins')}, Debt/Equity {info.get('debtToEquity')}
-    - Technicals: RSI {tech['RSI']:.2f}, Supports {tech['Supports']}
-    - Recent Headlines: {news}
-
-    YOUR GOAL: Provide a balanced investment thesis.
-    
-    STRUCTURE:
-    1. THE BULL CASE: Why buy now? (Key growth drivers)
-    2. THE BEAR CASE: What could go wrong? (Regulatory, competition, macro)
-    3. VALUATION: Is it overvalued based on its P/E and growth?
-    4. RISK RATING: Rate from 1 (Low) to 10 (Speculative).
-    5. FINAL VERDICT: A direct Buy/Hold/Sell suggestion with a 'Confidence Score' (0-100%).
+    Context: {info.get('longBusinessSummary')[:1000]}
+    Technicals: RSI {tech['RSI']:.2f}, Supports {tech['Supports']}
+    News: {news}
+    Provide: 1. Bull Case, 2. Bear Case, 3. Risk Rating (1-10), 4. Final Buy/Hold/Sell Verdict.
     """
+    
     return model.generate_content(prompt).text
-
 # --- APP UI ---
 st.title("🏛️ Professional Equity Research Dashboard")
 
