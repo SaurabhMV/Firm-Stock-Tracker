@@ -113,25 +113,39 @@ if analyze_btn:
             
             # ... inside your Tab 3 logic ...
             with tab3:
-                st.subheader("Latest Market Buzz")
-                news_items = ticker.news[:8] # Get a few more to be safe
-                
-                if not news_items:
-                    st.info("No recent news found.")
-                else:
-                    for n in news_items:
-                        # Use the .get() method we discussed earlier for safety
-                        raw_title = n.get('title', 'Read full story')
-                        raw_link = n.get('link', '#')
-                        
-                        # Sanitize the link
-                        clean_link = sanitize_link(raw_link)
-                        
-                        # Using st.markdown for better link reliability
-                        # Replace the st.markdown line with this:
-                        st.link_button(f"Read: {raw_title[:60]}...", clean_link, use_container_width=True)
-                        
-                        # Optional: Add the publisher if available for more context
-                        publisher = n.get('publisher', 'Finance News')
-                        st.caption(f"Source: {publisher}")
-                        st.divider()
+            st.subheader("📰 Market-Moving News Feed")
+            news_items = ticker.news[:8]
+            
+            if not news_items:
+                st.info("No recent news found for this ticker.")
+            else:
+                for n in news_items:
+                    # 1. Clean Title and Link
+                    title = n.get('title', 'No Title')
+                    raw_link = n.get('link', '#')
+                    # Ensure link is absolute
+                    clean_link = raw_link if raw_link.startswith('http') else f"https://finance.yahoo.com{raw_link}"
+                    
+                    # 2. Get Thumbnail (looking for the highest quality resolution)
+                    thumbnail_url = None
+                    if 'thumbnail' in n and 'resolutions' in n['thumbnail']:
+                        # Usually, the last resolution in the list is the highest quality
+                        thumbnail_url = n['thumbnail']['resolutions'][-1].get('url')
+        
+                    # 3. UI: Two Columns (Small image on left, text on right)
+                    col_img, col_txt = st.columns([1, 4])
+                    
+                    with col_img:
+                        if thumbnail_url:
+                            st.image(thumbnail_url, use_container_width=True)
+                        else:
+                            st.write("🖼️") # Fallback icon if no image
+                    
+                    with col_txt:
+                        st.markdown(f"**[{title}]({clean_link})**")
+                        # Show source and time
+                        pub = n.get('publisher', 'Finance')
+                        st.caption(f"Source: {pub}")
+                        st.link_button("Read Article", clean_link, size="small")
+                    
+                    st.divider()
