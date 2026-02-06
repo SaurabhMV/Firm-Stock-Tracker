@@ -128,7 +128,8 @@ if analyze_btn:
                         clean_link = sanitize_link(raw_link)
                         
                         # Using st.markdown for better link reliability
-                        st.markdown(f"⭐ **[{raw_title}]({clean_link})**")
+                        # Replace the st.markdown line with this:
+                        st.link_button(f"Read: {raw_title[:60]}...", clean_link, use_container_width=True)
                         
                         # Optional: Add the publisher if available for more context
                         publisher = n.get('publisher', 'Finance News')
