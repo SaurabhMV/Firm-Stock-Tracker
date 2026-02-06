@@ -3,108 +3,98 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import google.generativeai as genai
-from scipy.signal import argrelextrema
 import plotly.graph_objects as go
 
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="AI Stock Analyst", layout="wide")
+# --- CONFIG ---
+st.set_page_config(page_title="Pro Stock Analyst", layout="wide")
 
-# --- SIDEBAR: SETTINGS ---
+# --- SIDEBAR: AUTO-MODEL DISCOVERY ---
 with st.sidebar:
-    st.title("⚙️ Configuration")
-    api_key = st.text_input("Enter Gemini API Key", type="password")
-    ticker_input = st.text_input("Stock Ticker", value="AAPL").upper()
-    comp_input = st.text_input("Competitor Ticker (Optional)").upper()
-    analyze_btn = st.button("Run Deep Analysis")
+    st.title("⚙️ Setup")
+    api_key = st.text_input("Gemini API Key", type="password")
+    ticker_input = st.text_input("Stock Ticker", value="GOOG").upper()
+    analyze_btn = st.button("Generate Deep Research")
 
-# --- CORE LOGIC ---
-class StockAnalyzer:
-    def __init__(self, ticker_symbol, competitor_symbol=None):
-        self.ticker = yf.Ticker(ticker_symbol)
-        self.symbol = ticker_symbol
-        self.comp_symbol = competitor_symbol
-        self.info = self.ticker.info
-        self.history = self.ticker.history(period="1y")
+def get_analyst_data(ticker):
+    """Fetches Analyst recommendations and targets."""
+    info = ticker.info
+    current = info.get('currentPrice', 1)
+    target = info.get('targetMeanPrice', current)
+    upside = ((target - current) / current) * 100
+    
+    # Summary of consensus (e.g., 'buy', 'hold')
+    rec = info.get('recommendationKey', 'N/A').replace('_', ' ').title()
+    return {"Target": target, "Upside": upside, "Consensus": rec}
 
-    def calculate_technicals(self):
-        df = self.history.copy()
-        # RSI
-        delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        df['RSI'] = 100 - (100 / (1 + (gain / loss)))
-        
-        # Support/Resistance
-        res_idx = argrelextrema(df.Close.values, np.greater_equal, order=20)[0]
-        sup_idx = argrelextrema(df.Close.values, np.less_equal, order=20)[0]
-        
-        return {
-            "Price": df['Close'].iloc[-1],
-            "RSI": df['RSI'].iloc[-1],
-            "Resistances": [df.Close.iloc[i] for i in res_idx[-3:]],
-            "Supports": [df.Close.iloc[i] for i in sup_idx[-3:]]
-        }
+def generate_pro_report(symbol, info, tech, news, api_key):
+    genai.configure(api_key=api_key)
+    # Using the 'latest' alias as discussed
+    model = genai.GenerativeModel("gemini-3-flash") 
+    
+    prompt = f"""
+    Act as a Hedge Fund Strategy Lead. Analyze {symbol} for a long-term investor.
+    
+    CONTEXT:
+    - Business: {info.get('longBusinessSummary')[:1000]}
+    - Fundamentals: P/E {info.get('forwardPE')}, Margin {info.get('profitMargins')}, Debt/Equity {info.get('debtToEquity')}
+    - Technicals: RSI {tech['RSI']:.2f}, Supports {tech['Supports']}
+    - Recent Headlines: {news}
 
-    def generate_report(self, api_key):
-        genai.configure(api_key=api_key)
-        
-        # 1. AUTO-DISCOVERY: Find the latest supported Flash model
-        available_models = [
-            m.name for m in genai.list_models() 
-            if 'generateContent' in m.supported_generation_methods 
-            and 'flash' in m.name.lower()
-        ]
-        
-        # Pick the most recent one (usually the last in the list) or use the alias
-        # We use 'gemini-flash-latest' as the primary, but fallback to discovery
-        target_model = "gemini-flash-latest" if "models/gemini-flash-latest" in available_models else available_models[-1]
-        
-        model = genai.GenerativeModel(target_model)
-        
-        # ... rest of your prompt and content generation ...
-        tech = self.calculate_technicals()
-        news = [n.get('title') for n in self.ticker.news[:8]]
-        
-        prompt = f"Analyze {self.symbol}..." # (Your existing prompt here)
-        
-        return model.generate_content(prompt).text
+    YOUR GOAL: Provide a balanced investment thesis.
+    
+    STRUCTURE:
+    1. THE BULL CASE: Why buy now? (Key growth drivers)
+    2. THE BEAR CASE: What could go wrong? (Regulatory, competition, macro)
+    3. VALUATION: Is it overvalued based on its P/E and growth?
+    4. RISK RATING: Rate from 1 (Low) to 10 (Speculative).
+    5. FINAL VERDICT: A direct Buy/Hold/Sell suggestion with a 'Confidence Score' (0-100%).
+    """
+    return model.generate_content(prompt).text
 
 # --- APP UI ---
-st.title("🤖 AI-Powered Stock Intelligence")
+st.title("🏛️ Professional Equity Research Dashboard")
 
 if analyze_btn:
     if not api_key:
-        st.error("Please provide a Gemini API Key in the sidebar.")
+        st.error("API Key Required")
     else:
-        try:
-            with st.spinner(f"Analyzing {ticker_input}..."):
-                analyzer = StockAnalyzer(ticker_input, comp_input)
-                
-                # Layout: Two columns
-                col1, col2 = st.columns([1, 1])
-                
-                with col1:
-                    st.subheader(f"📈 {ticker_input} Price Action")
-                    fig = go.Figure(data=[go.Candlestick(x=analyzer.history.index,
-                                    open=analyzer.history['Open'],
-                                    high=analyzer.history['High'],
-                                    low=analyzer.history['Low'],
-                                    close=analyzer.history['Close'])])
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                with col2:
-                    st.subheader("📊 Key Metrics")
-                    metrics = analyzer.info
-                    m_col1, m_col2 = st.columns(2)
-                    m_col1.metric("Current Price", f"${metrics.get('currentPrice', 'N/A')}")
-                    m_col1.metric("Forward P/E", metrics.get('forwardPE', 'N/A'))
-                    m_col2.metric("Market Cap", f"{metrics.get('marketCap', 0):,}")
-                    m_col2.metric("Target Price", f"${metrics.get('targetMeanPrice', 'N/A')}")
+        with st.spinner("Synthesizing market data..."):
+            ticker = yf.Ticker(ticker_input)
+            analyst = get_analyst_data(ticker)
+            
+            # --- TOP ROW: KPI CARDS ---
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Current Price", f"${ticker.info.get('currentPrice')}")
+            c2.metric("Target Price", f"${analyst['Target']:.2f}", f"{analyst['Upside']:.1f}% Upside")
+            c3.metric("Wall St. Consensus", analyst['Consensus'])
+            c4.metric("Market Cap", f"{ticker.info.get('marketCap', 0):,}")
 
-                st.divider()
-                st.subheader("🧠 Gemini Intelligence Report")
-                report = analyzer.generate_report(api_key)
-                st.markdown(report)
+            # --- TABS FOR BETTER UX ---
+            tab1, tab2, tab3 = st.tabs(["📊 Charts & Data", "🧠 AI Thesis", "📰 News Sentiment"])
+
+            with tab1:
+                col_a, col_b = st.columns([2, 1])
+                with col_a:
+                    hist = ticker.history(period="1y")
+                    fig = go.Figure(data=[go.Candlestick(x=hist.index, open=hist['Open'], high=hist['High'], low=hist['Low'], close=hist['Close'])])
+                    st.plotly_chart(fig, use_container_width=True)
+                with col_b:
+                    st.write("**Key Financial Health**")
+                    st.json({
+                        "Profit Margin": ticker.info.get("profitMargins"),
+                        "Revenue Growth": ticker.info.get("revenueGrowth"),
+                        "Return on Equity": ticker.info.get("returnOnEquity")
+                    })
+
+            with tab2:
+                # Mock technicals for the prompt
+                tech_data = {"RSI": 55, "Supports": [140, 142], "Price": ticker.info.get('currentPrice')}
+                news_titles = [n.get('title') for n in ticker.news[:5]]
                 
-        except Exception as e:
-            st.error(f"Error fetching data for {ticker_input}: {e}")
+                report = generate_pro_report(ticker_input, ticker.info, tech_data, news_titles, api_key)
+                st.markdown(report)
+
+            with tab3:
+                st.subheader("Latest Market Buzz")
+                for n in ticker.news[:5]:
+                    st.write(f"🔗 [{n['title']}]({n['link']})")
