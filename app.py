@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import datetime
 import google.generativeai as genai
 import plotly.graph_objects as go
 from scipy.signal import argrelextrema
@@ -184,50 +185,72 @@ if analyze_btn:
                     st.markdown(report)
 
                 # TAB 3: NEWS FEED (Fixed Indentation & Links)
-                # TAB 3: NEWS FEED (Fixed Links)
+                # TAB 3: NEWS FEED (Fixed Links)# --- TAB 3: AI NEWS BRIEFING ---
                 with tab3:
-                    st.subheader("📰 Market-Moving News Feed")
+                    st.subheader("⚡ AI Executive News Briefing")
                     
-                    news_items = ticker.news[:10]
+                    news_items = ticker.news[:10] # Get top 10 recent stories
                     
                     if not news_items:
                         st.info("No recent news found for this ticker.")
                     else:
+                        # --- PART 1: GENERATE AI SUMMARY OF NEWS ---
+                        # We combine all headlines into a single string for Gemini
+                        news_text = ""
                         for n in news_items:
-                            # 1. Safe Data Extraction
-                            title = n.get('title', 'No Title Available')
-                            raw_link = n.get('link', '#')
+                            pub_time = datetime.datetime.fromtimestamp(n.get('providerPublishTime', 0)).strftime('%Y-%m-%d')
+                            news_text += f"- {pub_time}: {n.get('title')}\n"
+                        
+                        try:
+                            # Create a specific mini-prompt for news summarization
+                            news_model = genai.GenerativeModel("gemini-1.5-flash") # Or your dynamic model variable
+                            news_prompt = f"""
+                            You are a financial news anchor. Here are the latest headlines for {ticker_input}:
+                            {news_text}
                             
-                            # --- CRITICAL FIX HERE ---
-                            clean_link = sanitize_link(raw_link)
-                            
-                            publisher = n.get('publisher', 'Finance News')
-                            
-                            # 2. Thumbnail Logic
+                            Task:
+                            1. Summarize the general sentiment (Bullish/Bearish/Neutral).
+                            2. Group these stories into 3 key themes or events.
+                            3. Be extremely concise (bullet points).
+                            """
+                            news_summary = news_model.generate_content(news_prompt).text
+                            st.info(news_summary)
+                        except Exception as e:
+                            st.warning(f"Could not generate AI summary: {e}")
+
+                        st.divider()
+
+                        # --- PART 2: LIST WITH TIMESTAMPS ---
+                        st.subheader("📜 Timeline of Events")
+                        
+                        for n in news_items:
+                            title = n.get('title', 'No Title')
+                            # Convert Unix timestamp to readable date
+                            timestamp = n.get('providerPublishTime', 0)
+                            readable_date = datetime.datetime.fromtimestamp(timestamp).strftime('%b %d, %I:%M %p')
+                            publisher = n.get('publisher', 'Unknown Source')
+
+                            # Thumbnail Logic
                             thumbnail_url = None
                             if 'thumbnail' in n and 'resolutions' in n['thumbnail']:
-                                resolutions = n['thumbnail'].get('resolutions', [])
-                                if resolutions:
-                                    thumbnail_url = resolutions[-1].get('url')
+                                thumbnail_url = n['thumbnail']['resolutions'][-1].get('url')
 
-                            # 3. Render News Item
+                            # UI Layout
                             with st.container():
-                                col_img, col_txt = st.columns([1, 4])
+                                col_img, col_txt = st.columns([1, 5])
                                 
                                 with col_img:
                                     if thumbnail_url:
                                         st.image(thumbnail_url, use_container_width=True)
                                     else:
-                                        st.write("🗞️")
+                                        st.write("📰")
 
                                 with col_txt:
-                                    # Markdown link (Backup)
-                                    st.markdown(f"**[{title}]({clean_link})**")
-                                    st.caption(f"Source: {publisher}")
+                                    # Display Title
+                                    st.markdown(f"**{title}**")
                                     
-                                    # Button Link (Primary)
-                                    # If this fails, the markdown link above usually works
-                                    st.link_button("Read Full Story", clean_link)
+                                    # Display Metadata (Date instead of Link Button)
+                                    st.caption(f"🕒 {readable_date}  |  source: {publisher}")
                                 
                                 st.divider()
 
