@@ -205,6 +205,7 @@ if analyze_btn:
                 # TAB 3: NEWS FEED (Fixed Indentation & Links)
                 # TAB 3: NEWS FEED (Fixed Links)# --- TAB 3: AI NEWS BRIEFING ---
 # --- TAB 3: AI NEWS BRIEFING ---
+# --- TAB 3: AI NEWS BRIEFING & CALENDAR ---
                 with tab3:
                     st.subheader("⚡ AI Executive News Briefing")
                     
@@ -214,16 +215,14 @@ if analyze_btn:
                         st.info("No recent news found for this ticker.")
                     else:
                         # --- PART 1: GENERATE AI SUMMARY ---
-                        # Combine headlines into a single string
                         news_text = ""
                         for n in news_items:
-                            # Convert timestamp to YYYY-MM-DD
                             ts = n.get('providerPublishTime', 0)
                             pub_time = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
                             news_text += f"- {pub_time}: {n.get('title')}\n"
                         
                         try:
-                            # --- FIXED: Use the helper function to get the model ---
+                            # Use the helper function to get the best model
                             model_name = get_best_model_name() 
                             news_model = genai.GenerativeModel(model_name)
                             
@@ -236,6 +235,7 @@ if analyze_btn:
                             2. Group these stories into 3 key themes.
                             3. Be extremely concise (bullet points).
                             """
+                            
                             with st.spinner(f"Analyzing news with {model_name}..."):
                                 news_summary = news_model.generate_content(news_prompt).text
                                 st.success(news_summary)
@@ -243,36 +243,58 @@ if analyze_btn:
                         except Exception as e:
                             st.warning(f"Could not generate summary: {e}")
 
-                        st.divider()
+                    st.divider()
 
-                        # --- PART 2: TIMELINE LIST ---
-                        st.subheader("📜 Timeline of Events")
+                    # --- PART 2: UPCOMING EVENTS (New Section) ---
+                    st.subheader("📅 Upcoming Major Events")
+                    
+                    try:
+                        # Fetch the calendar (returns a Dictionary or DataFrame)
+                        calendar = ticker.calendar
                         
-                        for n in news_items:
-                            title = n.get('title', 'No Title')
-                            ts = n.get('providerPublishTime', 0)
-                            readable_date = datetime.datetime.fromtimestamp(ts).strftime('%b %d, %I:%M %p')
-                            publisher = n.get('publisher', 'Unknown Source')
+                        if not calendar:
+                            st.info("No upcoming calendar events found.")
+                        else:
+                            # 1. Earnings Date
+                            # The structure of .calendar varies, so we handle dictionary safely
+                            earnings_date = calendar.get('Earnings Date', ['N/A'])
+                            if isinstance(earnings_date, list):
+                                earnings_date = earnings_date[0] # Take the first date
                             
-                            # Thumbnail Logic
-                            thumbnail_url = None
-                            if 'thumbnail' in n and 'resolutions' in n['thumbnail']:
-                                resolutions = n['thumbnail'].get('resolutions', [])
-                                if resolutions:
-                                    thumbnail_url = resolutions[-1].get('url')
+                            # 2. Estimates
+                            eps_est = calendar.get('Earnings Average', ['N/A'])
+                            if isinstance(eps_est, list): eps_est = eps_est[0]
+                            
+                            rev_est = calendar.get('Revenue Average', ['N/A'])
+                            if isinstance(rev_est, list): rev_est = rev_est[0]
 
-                            # Render Row
-                            with st.container():
-                                col_img, col_txt = st.columns([1, 5])
-                                with col_img:
-                                    if thumbnail_url:
-                                        st.image(thumbnail_url, use_container_width=True)
-                                    else:
-                                        st.write("📰")
-                                with col_txt:
-                                    st.markdown(f"**{title}**")
-                                    st.caption(f"🕒 {readable_date}  |  Source: {publisher}")
-                                st.divider()
+                            # 3. Display as Metrics
+                            c1, c2, c3 = st.columns(3)
+                            
+                            # Format the date if it's a datetime object
+                            if isinstance(earnings_date, (datetime.date, datetime.datetime)):
+                                earnings_display = earnings_date.strftime("%b %d, %Y")
+                            else:
+                                earnings_display = str(earnings_date)
+
+                            c1.metric("📅 Next Earnings", earnings_display)
+                            c2.metric("💰 EPS Estimate", f"${eps_est}" if eps_est != 'N/A' else "N/A")
+                            
+                            # Format Revenue (Billions/Millions)
+                            if isinstance(rev_est, (int, float)):
+                                if rev_est > 1_000_000_000:
+                                    rev_display = f"${rev_est/1_000_000_000:.2f}B"
+                                else:
+                                    rev_display = f"${rev_est/1_000_000:.2f}M"
+                            else:
+                                rev_display = "N/A"
                                 
+                            c3.metric("Ez Revenue Est.", rev_display)
+                            
+                            st.caption("*Estimates provided by Yahoo Finance analysts.*")
+
+                    except Exception as e:
+                        st.error(f"Could not fetch calendar data: {e}")
+                        
         except Exception as e:
             st.error(f"An error occurred: {e}")
