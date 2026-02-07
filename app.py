@@ -13,6 +13,16 @@ st.set_page_config(
     page_icon="🚀"            # This becomes the default icon
 )
 
+st.markdown(
+    """
+    <head>
+        <meta name="mobile-web-app-capable" content="yes">
+        <title>My Final App Name</title>
+    </head>
+    """,
+    unsafe_allow_html=True
+)
+
 # --- SIDEBAR: SETUP ---
 with st.sidebar:
     st.title("⚙️ Setup")
