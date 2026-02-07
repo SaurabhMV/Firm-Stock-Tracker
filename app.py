@@ -63,6 +63,24 @@ def calculate_technicals(history):
         "Price": df['Close'].iloc[-1]
     }
 
+def get_best_model_name():
+    """Dynamically finds the newest available Gemini Flash model."""
+    try:
+        # Get all models that support generating content
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Filter for 'flash' models and sort them to get the latest version
+        flash_models = [m for m in models if 'flash' in m.lower()]
+        flash_models.sort()
+        
+        if flash_models:
+            return flash_models[-1]  # Returns the newest one (e.g., gemini-3.0-flash)
+    except Exception:
+        pass
+    
+    # Fallback if discovery fails
+    return "models/gemini-flash-latest"
+
 def sanitize_link(link):
     """
     Forces all links to be absolute URLs. 
@@ -186,73 +204,75 @@ if analyze_btn:
 
                 # TAB 3: NEWS FEED (Fixed Indentation & Links)
                 # TAB 3: NEWS FEED (Fixed Links)# --- TAB 3: AI NEWS BRIEFING ---
+# --- TAB 3: AI NEWS BRIEFING ---
                 with tab3:
                     st.subheader("⚡ AI Executive News Briefing")
                     
-                    news_items = ticker.news[:10] # Get top 10 recent stories
+                    news_items = ticker.news[:10]
                     
                     if not news_items:
                         st.info("No recent news found for this ticker.")
                     else:
-                        # --- PART 1: GENERATE AI SUMMARY OF NEWS ---
-                        # We combine all headlines into a single string for Gemini
+                        # --- PART 1: GENERATE AI SUMMARY ---
+                        # Combine headlines into a single string
                         news_text = ""
                         for n in news_items:
-                            pub_time = datetime.datetime.fromtimestamp(n.get('providerPublishTime', 0)).strftime('%Y-%m-%d')
+                            # Convert timestamp to YYYY-MM-DD
+                            ts = n.get('providerPublishTime', 0)
+                            pub_time = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
                             news_text += f"- {pub_time}: {n.get('title')}\n"
                         
                         try:
-                            # Create a specific mini-prompt for news summarization
-                            news_model = genai.GenerativeModel("gemini-1.5-flash") # Or your dynamic model variable
+                            # --- FIXED: Use the helper function to get the model ---
+                            model_name = get_best_model_name() 
+                            news_model = genai.GenerativeModel(model_name)
+                            
                             news_prompt = f"""
                             You are a financial news anchor. Here are the latest headlines for {ticker_input}:
                             {news_text}
                             
                             Task:
                             1. Summarize the general sentiment (Bullish/Bearish/Neutral).
-                            2. Group these stories into 3 key themes or events.
+                            2. Group these stories into 3 key themes.
                             3. Be extremely concise (bullet points).
                             """
-                            news_summary = news_model.generate_content(news_prompt).text
-                            st.info(news_summary)
+                            with st.spinner(f"Analyzing news with {model_name}..."):
+                                news_summary = news_model.generate_content(news_prompt).text
+                                st.success(news_summary)
+                                
                         except Exception as e:
-                            st.warning(f"Could not generate AI summary: {e}")
+                            st.warning(f"Could not generate summary: {e}")
 
                         st.divider()
 
-                        # --- PART 2: LIST WITH TIMESTAMPS ---
+                        # --- PART 2: TIMELINE LIST ---
                         st.subheader("📜 Timeline of Events")
                         
                         for n in news_items:
                             title = n.get('title', 'No Title')
-                            # Convert Unix timestamp to readable date
-                            timestamp = n.get('providerPublishTime', 0)
-                            readable_date = datetime.datetime.fromtimestamp(timestamp).strftime('%b %d, %I:%M %p')
+                            ts = n.get('providerPublishTime', 0)
+                            readable_date = datetime.datetime.fromtimestamp(ts).strftime('%b %d, %I:%M %p')
                             publisher = n.get('publisher', 'Unknown Source')
-
+                            
                             # Thumbnail Logic
                             thumbnail_url = None
                             if 'thumbnail' in n and 'resolutions' in n['thumbnail']:
-                                thumbnail_url = n['thumbnail']['resolutions'][-1].get('url')
+                                resolutions = n['thumbnail'].get('resolutions', [])
+                                if resolutions:
+                                    thumbnail_url = resolutions[-1].get('url')
 
-                            # UI Layout
+                            # Render Row
                             with st.container():
                                 col_img, col_txt = st.columns([1, 5])
-                                
                                 with col_img:
                                     if thumbnail_url:
                                         st.image(thumbnail_url, use_container_width=True)
                                     else:
                                         st.write("📰")
-
                                 with col_txt:
-                                    # Display Title
                                     st.markdown(f"**{title}**")
-                                    
-                                    # Display Metadata (Date instead of Link Button)
-                                    st.caption(f"🕒 {readable_date}  |  source: {publisher}")
-                                
+                                    st.caption(f"🕒 {readable_date}  |  Source: {publisher}")
                                 st.divider()
-
+                                
         except Exception as e:
             st.error(f"An error occurred: {e}")
