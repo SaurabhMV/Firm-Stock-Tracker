@@ -8,7 +8,10 @@ import plotly.graph_objects as go
 from scipy.signal import argrelextrema
 
 # --- CONFIG ---
-st.set_page_config(page_title="Pro Stock Analyst", layout="wide")
+st.set_page_config(
+    page_title="My Cool App", # This becomes the default Home Screen name
+    page_icon="🚀"            # This becomes the default icon
+)
 
 # --- SIDEBAR: SETUP ---
 with st.sidebar:
