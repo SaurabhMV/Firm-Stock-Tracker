@@ -57,14 +57,31 @@ def get_analyst_data(ticker):
 
 def calculate_technicals(history):
     df = history.copy()
-    if df.empty: return {"RSI": 50, "Supports": [], "Price": 0}
+    if df.empty or len(df) < 14: 
+        return {"RSI": 50, "Supports": [], "Price": 0}
+    
+    # --- PRO RSI CALCULATION (Wilder's Smoothing) ---
     delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    df['RSI'] = 100 - (100 / (1 + (gain / loss)))
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+
+    # Use EWM (Exponential Weighted Moving Average) for Wilder's Smoothing
+    # alpha = 1/period is the standard for Wilder's RSI
+    avg_gain = gain.ewm(alpha=1/14, min_periods=14, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/14, min_periods=14, adjust=False).mean()
+
+    rs = avg_gain / avg_loss
+    df['RSI'] = 100 - (100 / (1 + rs))
+    
+    # Support Level Logic
     sup_idx = argrelextrema(df.Close.values, np.less_equal, order=20)[0]
-    supports = [df.Close.iloc[i] for i in sup_idx[-3:]] if len(sup_idx) > 0 else []
-    return {"RSI": df['RSI'].iloc[-1], "Supports": supports, "Price": df['Close'].iloc[-1]}
+    supports = [round(df.Close.iloc[i], 2) for i in sup_idx[-3:]] if len(sup_idx) > 0 else []
+    
+    return {
+        "RSI": df['RSI'].iloc[-1], 
+        "Supports": supports, 
+        "Price": df['Close'].iloc[-1]
+    }
 
 def generate_pro_report(symbol, info, tech, news_data, key, model_id):
     """Generates the AI analysis with strict date awareness."""
