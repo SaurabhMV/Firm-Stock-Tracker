@@ -156,14 +156,59 @@ if analyze_btn:
 
                     st.divider()
 
-                    # 2. INTERACTIVE PRICE CHART
-                    st.write("### 📈 Price Action")
-                    fig = go.Figure(data=[go.Candlestick(
-                        x=history.index, open=history['Open'], high=history['High'], 
-                        low=history['Low'], close=history['Close'], name="Price")])
-                    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=400)
-                    st.plotly_chart(fig, use_container_width=True)
+# 2. INTERACTIVE PRICE CHART WITH S&P 500 COMPARISON
+                    st.write("### 📈 Price Action vs. S&P 500")
+                    
+                    # Fetch S&P 500 data for comparison
+                    spy = yf.Ticker("SPY")
+                    spy_hist = spy.history(period="1y")
 
+                    # Normalize both to 100 to show % change (Relative Strength)
+                    stock_norm = (history['Close'] / history['Close'].iloc[0]) * 100
+                    spy_norm = (spy_hist['Close'] / spy_hist['Close'].iloc[0]) * 100
+
+                    fig = go.Figure()
+
+                    # Add Main Candlestick Chart
+                    fig.add_trace(go.Candlestick(
+                        x=history.index, open=history['Open'], high=history['High'], 
+                        low=history['Low'], close=history['Close'], name=f"{ticker_input} Price"
+                    ))
+
+                    # Add S&P 500 Line (on a secondary Y-axis or as a % overlay)
+                    fig.add_trace(go.Scatter(
+                        x=spy_hist.index, y=spy_hist['Close'], 
+                        name="S&P 500 ($SPY)", 
+                        line=dict(color='rgba(255, 255, 255, 0.4)', width=2, dash='dot'),
+                        yaxis="y2"
+                    ))
+
+                    fig.update_layout(
+                        template="plotly_dark",
+                        xaxis_rangeslider_visible=False,
+                        height=500,
+                        margin=dict(l=10, r=10, t=10, b=10),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        yaxis=dict(title="Stock Price ($)"),
+                        yaxis2=dict(
+                            title="S&P 500 ($)",
+                            overlaying="y",
+                            side="right",
+                            showgrid=False
+                        )
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Relative Performance Summary
+                    stock_perf = ((history['Close'].iloc[-1] - history['Close'].iloc[0]) / history['Close'].iloc[0]) * 100
+                    spy_perf = ((spy_hist['Close'].iloc[-1] - spy_hist['Close'].iloc[0]) / spy_hist['Close'].iloc[0]) * 100
+                    diff = stock_perf - spy_perf
+                    
+                    if diff > 0:
+                        st.success(f"🚀 {ticker_input} is outperforming the S&P 500 by {diff:.2f}% this year.")
+                    else:
+                        st.error(f"📉 {ticker_input} is underperforming the S&P 500 by {abs(diff):.2f}% this year.")
+                        
                     # 3. SMART PEER COMPARISON
                     st.write("### 🏁 Smart Peer Comparison")
                     
