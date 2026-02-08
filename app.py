@@ -66,18 +66,47 @@ def calculate_technicals(history):
     supports = [df.Close.iloc[i] for i in sup_idx[-3:]] if len(sup_idx) > 0 else []
     return {"RSI": df['RSI'].iloc[-1], "Supports": supports, "Price": df['Close'].iloc[-1]}
 
-def generate_pro_report(symbol, info, tech, news, key, model_id):
+def generate_pro_report(symbol, info, tech, news_data, key, model_id):
+    """Generates the AI analysis with strict date awareness."""
     genai.configure(api_key=key)
     model = genai.GenerativeModel(model_id)
+    
+    # Get today's date for the prompt
+    today = datetime.date.today().strftime('%B %d, %Y')
+    
     prompt = f"""
-    Act as a Hedge Fund Strategy Lead. Analyze {symbol}.
-    - Fundamentals: P/E {info.get('forwardPE')}, Margin {info.get('profitMargins')}
-    - Technicals: RSI {tech.get('RSI', 50):.2f}, Supports: {tech.get('Supports')}
-    - News: {news}
-    Structure: Bull Case, Bear Case, Valuation Check, and Final Verdict.
-    """
-    return model.generate_content(prompt).text
+    You are a Senior Wall Street Analyst. The current date is **{today}**.
+    
+    Generate a professional investment thesis for {symbol} ({info.get('longName')}).
+    
+    ### DATA SOURCE (Real-time):
+    1. **Fundamentals:**
+       - Price: ${info.get('currentPrice')}
+       - P/E Ratio: {info.get('forwardPE', 'N/A')}
+       - PEG Ratio: {info.get('pegRatio', 'N/A')} (Value < 1.0 is undervalued)
+       - Analyst Target: ${info.get('targetMeanPrice', 'N/A')}
+    
+    2. **Technicals:**
+       - RSI (14): {tech.get('RSI', 50):.2f}
+       - Support Levels: {tech.get('Supports')}
+    
+    3. **Recent News Headlines (Chronological):**
+    {news_data}
 
+    ### INSTRUCTIONS:
+    - **Prioritize the 'Recent News' provided above.** If a headline is from 2026, treat it as critical.
+    - **Ignore outdated training data** (e.g., from 2023 or 2024) if it conflicts with the provided news.
+    - If the RSI is > 70, mention "Overbought" risks. If < 30, mention "Oversold" opportunities.
+    
+    ### OUTPUT FORMAT (Markdown):
+    **1. 🐂 The Bull Case** (Focus on growth drivers & recent positive earnings/news)
+    **2. 🐻 The Bear Case** (Focus on risks, valuation concerns, or negative news)
+    **3. ⚖️ Valuation Check** (Compare P/E and PEG to fair value. Is it cheap?)
+    **4. 🏁 Final Verdict** (Buy/Hold/Sell with a specific timeframe, e.g., "12-month Buy").
+    """
+    
+    return model.generate_content(prompt).text
+    
 # --- MAIN APP LOGIC ---
 if analyze_btn:
     if not api_key:
@@ -282,12 +311,49 @@ if analyze_btn:
                     }
                     st.table(pd.DataFrame.from_dict(detailed_data, orient='index', columns=['Value']))
                     
+# --- TAB 2: AI THESIS (UPDATED) ---
                 with tab2:
-                    st.subheader(f"🤖 AI Investment Memo ({selected_model_display})")
-                    news_titles = [n.get('title') for n in ticker.news[:5]]
-                    report = generate_pro_report(ticker_input, info, tech_data, news_titles, api_key, selected_model_id)
-                    st.markdown(report)
+                    st.write(f"### 🤖 Gemini {selected_model_display.split(' ')[1]} Analysis")
+                    st.caption(f"Generated on {datetime.date.today().strftime('%B %d, %Y')}")
+                    
+                    # 1. Prepare News with Dates (Critical for Freshness)
+                    news_context = ""
+                    if ticker.news:
+                        for n in ticker.news[:7]: # Analyze top 7 stories
+                            # Convert unix timestamp to readable date
+                            ts = n.get('providerPublishTime', 0)
+                            pub_date = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
+                            title = n.get('title')
+                            news_context += f"- [{pub_date}] {title}\n"
+                    else:
+                        news_context = "No recent news available via API."
 
+                    # 2. Check for API Key
+                    if not api_key:
+                        st.warning("⚠️ Please enter your Gemini API Key in the sidebar to generate the thesis.")
+                        st.stop()
+
+                    # 3. Generate Report
+                    with st.spinner("Analyzing recent news, fundamentals, and technicals..."):
+                        try:
+                            # Pass the formatted 'news_context' instead of just titles
+                            report = generate_pro_report(
+                                ticker_input, 
+                                info, 
+                                tech_data, 
+                                news_context, 
+                                api_key, 
+                                selected_model_id
+                            )
+                            st.markdown(report)
+                            
+                            # Disclaimer
+                            st.divider()
+                            st.caption("Disclaimer: AI-generated content may contain hallucinations. Always verify earnings dates and financial data manually.")
+                            
+                        except Exception as e:
+                            st.error(f"AI Generation Failed: {e}")
+                            
                 with tab3:
                     st.subheader("⚡ AI Executive News Briefing")
                     news_items = ticker.news[:10]
