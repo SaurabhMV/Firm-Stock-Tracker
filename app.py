@@ -97,24 +97,6 @@ def calculate_technicals(history):
         "Price": df['Close'].iloc[-1]
     }
 
-def get_best_model_name():
-    """Dynamically finds the newest available Gemini Flash model."""
-    try:
-        # Get all models that support generating content
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # Filter for 'flash' models and sort them to get the latest version
-        flash_models = [m for m in models if 'flash' in m.lower()]
-        flash_models.sort()
-        
-        if flash_models:
-            return flash_models[-1]  # Returns the newest one (e.g., gemini-3.0-flash)
-    except Exception:
-        pass
-    
-    # Fallback if discovery fails
-    return "models/gemini-flash-latest"
-
 def sanitize_link(link):
     """
     Forces all links to be absolute URLs. 
