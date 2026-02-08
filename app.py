@@ -8,31 +8,47 @@ import plotly.graph_objects as go
 from scipy.signal import argrelextrema
 
 # --- CONFIG ---
-st.set_page_config(
-    page_title="My Cool App", # This becomes the default Home Screen name
-    page_icon="🚀"            # This becomes the default icon
-)
+# --- APP CONFIG & ANDROID RENAME FIX ---
+st.set_page_config(page_title="Firm Stock Tracker", page_icon="📈")
 
-st.markdown(
-    """
+# This helps Android recognize your custom name when "Adding to Home Screen"
+st.markdown("""
     <head>
         <meta name="mobile-web-app-capable" content="yes">
-        <title>My Final App Name</title>
+        <meta name="application-name" content="Stock Tracker">
     </head>
-    """,
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
 
-# --- SIDEBAR: SETUP ---
+# --- SIDEBAR MODEL SELECTION ---
 with st.sidebar:
-    st.title("⚙️ Setup")
-    # Check if key is in secrets, otherwise use text input
-    if "GEMINI_API_KEY" in st.secrets:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        st.success("API Key loaded from Secrets!")
-    else:
-        api_key = st.text_input("Gemini API Key", type="password")
+    st.title("Settings ⚙️")
     
+    # Map friendly names to actual Google Model IDs
+    model_options = {
+        "Gemini 3 Pro (Smartest)": "gemini-3-pro-preview",
+        "Gemini 3 Flash (Fast & Smart)": "gemini-3-flash-preview",
+        "Gemini 2.5 Pro (Balanced)": "gemini-2.5-pro",
+        "Gemini 2.5 Flash (Lightweight)": "gemini-2.5-flash"
+    }
+    
+    selected_model_display = st.selectbox(
+        "Choose Gemini Model:",
+        options=list(model_options.keys()),
+        index=1  # Defaults to Gemini 3 Flash
+    )
+    
+    selected_model_id = model_options[selected_model_display]
+    
+    st.info(f"Currently using: {selected_model_id}")
+
+# --- INITIALIZE CHOSEN MODEL ---
+# Ensure your API key is in st.secrets["GOOGLE_API_KEY"]
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+model = genai.GenerativeModel(selected_model_id)
+
+# Now use 'model' as you normally would for your stock analysis
+# response = model.generate_content("Analyze this stock...")
+
     ticker_input = st.text_input("Stock Ticker", value="GOOG").upper()
     analyze_btn = st.button("Generate Deep Research")
 
