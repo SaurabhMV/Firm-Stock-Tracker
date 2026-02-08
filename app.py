@@ -164,24 +164,63 @@ if analyze_btn:
                     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=400)
                     st.plotly_chart(fig, use_container_width=True)
 
-                    # 3. PEER COMPARISON
-                    st.write("### 🏁 Peer Comparison")
-                    selected_peers = st.multiselect("Compare with:", ["AAPL", "MSFT", "GOOG", "AMZN", "META", "TSLA", "NVDA"], default=["AAPL", "MSFT"])
+                    # 3. SMART PEER COMPARISON
+                    st.write("### 🏁 Smart Peer Comparison")
+                    
+                    # Mapping of sectors to relevant industry leaders
+                    sector_peers = {
+                        "Technology": ["AAPL", "MSFT", "GOOGL", "NVDA", "ORCL", "ADBE"],
+                        "Financial Services": ["JPM", "BAC", "GS", "MS", "WFC", "C"],
+                        "Healthcare": ["JNJ", "PFE", "UNH", "ABBV", "LLY", "MRK"],
+                        "Consumer Cyclical": ["AMZN", "TSLA", "HD", "NKE", "MCD", "SBUX"],
+                        "Communication Services": ["META", "NFLX", "DIS", "TMUS", "VZ", "T"],
+                        "Energy": ["XOM", "CVX", "SHEL", "BP", "TTE"],
+                        "Consumer Defensive": ["PG", "KO", "PEP", "WMT", "COST", "PM"],
+                        "Industrials": ["BA", "GE", "CAT", "UPS", "HON", "LMT"]
+                    }
+
+                    # Detect current sector
+                    current_sector = info.get('sector', "Technology") # Default to tech if unknown
+                    
+                    # Get relevant list or fallback to general tech giants
+                    relevant_list = sector_peers.get(current_sector, ["AAPL", "MSFT", "GOOGL", "AMZN"])
+                    
+                    # Remove current ticker if it's in the peer list
+                    if ticker_input in relevant_list:
+                        relevant_list = [p for p in relevant_list if p != ticker_input]
+                    
+                    selected_peers = st.multiselect(
+                        f"Compare with other {current_sector} leaders:", 
+                        options=relevant_list + ["SPY", "QQQ"], # Added ETFs as bonus options
+                        default=relevant_list[:3] # Pre-select top 3 rivals
+                    )
                     
                     if selected_peers:
                         compare_list = []
                         for p in [ticker_input] + selected_peers:
-                            p_info = yf.Ticker(p).info
-                            compare_list.append({
-                                "Ticker": p,
-                                "P/E": p_info.get('trailingPE', 0),
-                                "Margin %": (p_info.get('profitMargins', 0) or 0) * 100,
-                                "Rev Growth %": (p_info.get('revenueGrowth', 0) or 0) * 100
-                            })
-                        st.dataframe(pd.DataFrame(compare_list).set_index("Ticker"), use_container_width=True)
-
-                    st.divider()
-
+                            try:
+                                p_ticker = yf.Ticker(p)
+                                p_info = p_ticker.info
+                                compare_list.append({
+                                    "Ticker": p,
+                                    "P/E": p_info.get('trailingPE', 0),
+                                    "Margin %": (p_info.get('profitMargins', 0) or 0) * 100,
+                                    "Rev Growth %": (p_info.get('revenueGrowth', 0) or 0) * 100
+                                })
+                            except:
+                                continue
+                                
+                        if compare_list:
+                            df_compare = pd.DataFrame(compare_list).set_index("Ticker")
+                            
+                            # Visual Comparison Chart
+                            fig_comp = go.Figure()
+                            fig_comp.add_trace(go.Bar(x=df_compare.index, y=df_compare['P/E'], name='P/E Ratio', marker_color='#00CC96'))
+                            fig_comp.update_layout(title=f"P/E Comparison: {current_sector}", template="plotly_dark", height=300)
+                            st.plotly_chart(fig_comp, use_container_width=True)
+                            
+                            st.dataframe(df_compare, use_container_width=True)
+                            
                     # 4. RESTORED DETAILED FUNDAMENTALS (The "Full List")
                     st.write("### 📋 Detailed Financials")
                     detailed_data = {
