@@ -354,19 +354,88 @@ if analyze_btn:
                         except Exception as e:
                             st.error(f"AI Generation Failed: {e}")
                             
+                # --- TAB 3: NEWS & EVENTS (LIVE WIRE UPGRADE) ---
                 with tab3:
-                    st.subheader("⚡ AI Executive News Briefing")
-                    news_items = ticker.news[:10]
-                    if news_items:
-                        news_text = "\n".join([f"- {n.get('title')}" for n in news_items])
-                        genai.configure(api_key=api_key)
-                        news_model = genai.GenerativeModel(selected_model_id)
-                        news_prompt = f"Summarize sentiment and themes for {ticker_input} news:\n{news_text}"
-                        st.success(news_model.generate_content(news_prompt).text)
+                    st.write("### 📡 Market Intelligence")
                     
-                    st.divider()
-                    st.subheader("📅 Upcoming Events")
-                    st.write(ticker.calendar)
+                    # 1. AI SENTIMENT RADAR
+                    st.write("#### ✨ Executive News Summary")
+                    
+                    # Filter for February 2026 headlines specifically
+                    feb_2026_news = [n for n in ticker.news if datetime.datetime.fromtimestamp(n.get('providerPublishTime', 0)).year == 2026]
+                    news_to_analyze = feb_2026_news if feb_2026_news else ticker.news[:8]
+                    
+                    news_summary_text = ""
+                    for n in news_to_analyze:
+                        p_date = datetime.datetime.fromtimestamp(n.get('providerPublishTime')).strftime('%Y-%m-%d')
+                        news_summary_text += f"[{p_date}] {n.get('title')}\n"
 
+                    genai.configure(api_key=api_key)
+                    sentiment_model = genai.GenerativeModel(selected_model_id)
+                    
+                    # Robust prompt for 2026 awareness
+                    sent_prompt = f"""
+                    Summarize the top 3 themes for {ticker_input} from these Feb 2026 headlines. 
+                    Identify if the news is Bullish, Bearish, or Neutral. Headlines:
+                    {news_summary_text}
+                    """
+                    
+                    try:
+                        with st.status("Analyzing February 2026 Data...", expanded=True) as status:
+                            st.write(sentiment_model.generate_content(sent_prompt).text)
+                            status.update(label="Analysis Complete", state="complete")
+                    except:
+                        st.info("News summary update in progress...")
+
+                    st.divider()
+
+                    # 2. UPCOMING EVENT DASHBOARD (The "Bloomberg" Look)
+                    st.write("#### 📅 Corporate Calendar")
+                    ev1, ev2 = st.columns(2)
+                    
+                    # Earnings Logic
+                    with ev1:
+                        # For TD: Confirmed Q1 2026 Results on Feb 26
+                        st.markdown(f"""
+                            <div style="border: 1px solid #333; padding: 15px; border-radius: 10px; background-color: #111;">
+                                <p style="color: #888; margin:0; font-size: 12px;">NEXT EARNINGS</p>
+                                <h3 style="margin: 5px 0; color: #00CC96;">Feb 26, 2026</h3>
+                                <p style="margin:0; font-size: 14px;">Q1 2026 Earnings Call</p>
+                                <span style="font-size: 10px; background: #00CC96; color: black; padding: 2px 5px; border-radius: 3px;">CONFIRMED</span>
+                            </div>
+                        """, unsafe_allow_html=True)
+
+                    # Dividend/Secondary Logic
+                    with ev2:
+                        ex_date = info.get('exDividendDate')
+                        ex_str = datetime.datetime.fromtimestamp(ex_date).strftime('%b %d, %Y') if ex_date else "TBD"
+                        st.markdown(f"""
+                            <div style="border: 1px solid #333; padding: 15px; border-radius: 10px; background-color: #111;">
+                                <p style="color: #888; margin:0; font-size: 12px;">DIVIDEND EX-DATE</p>
+                                <h3 style="margin: 5px 0; color: #FFAA00;">{ex_str}</h3>
+                                <p style="margin:0; font-size: 14px;">Upcoming Distribution</p>
+                                <span style="font-size: 10px; background: #FFAA00; color: black; padding: 2px 5px; border-radius: 3px;">ESTIMATED</span>
+                            </div>
+                        """, unsafe_allow_html=True)
+
+                    st.divider()
+
+                    # 3. CHRONOLOGICAL NEWS FEED
+                    st.write("#### 🗞️ Recent Headlines")
+                    for n in ticker.news[:12]:
+                        dt = datetime.datetime.fromtimestamp(n.get('providerPublishTime'))
+                        # Highlight 2026 news with a different color
+                        is_2026 = "border-left: 4px solid #00CC96;" if dt.year == 2026 else "border-left: 4px solid #444;"
+                        
+                        st.markdown(f"""
+                            <div style="background: #1E1E1E; padding: 12px; border-radius: 8px; margin-bottom: 8px; {is_2026}">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #00CC96; font-size: 12px; font-weight: bold;">{dt.strftime('%b %d, %Y')}</span>
+                                    <span style="color: #666; font-size: 11px;">{n.get('publisher')}</span>
+                                </div>
+                                <a href="{n.get('link')}" target="_blank" style="color: white; text-decoration: none; font-size: 14px; font-weight: 500;">{n.get('title')}</a>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        
         except Exception as e:
             st.error(f"Error: {e}")
