@@ -407,8 +407,13 @@ if analyze_btn:
 
                     # Dividend/Secondary Logic
                     with ev2:
-                        ex_date = info.get('exDividendDate')
-                        ex_str = datetime.datetime.fromtimestamp(ex_date).strftime('%b %d, %Y') if ex_date else "TBD"
+                        # Safer way to get the Dividend Date
+                        ex_date_raw = info.get('exDividendDate')
+                        
+                        if ex_date_raw and isinstance(ex_date_raw, (int, float)):
+                            ex_str = datetime.datetime.fromtimestamp(ex_date_raw).strftime('%b %d, %Y')
+                        else:
+                            ex_str = "TBD / None"
                         st.markdown(f"""
                             <div style="border: 1px solid #333; padding: 15px; border-radius: 10px; background-color: #111;">
                                 <p style="color: #888; margin:0; font-size: 12px;">DIVIDEND EX-DATE</p>
@@ -423,19 +428,17 @@ if analyze_btn:
                     # 3. CHRONOLOGICAL NEWS FEED
                     st.write("#### 🗞️ Recent Headlines")
                     for n in ticker.news[:12]:
-                        dt = datetime.datetime.fromtimestamp(n.get('providerPublishTime'))
-                        # Highlight 2026 news with a different color
-                        is_2026 = "border-left: 4px solid #00CC96;" if dt.year == 2026 else "border-left: 4px solid #444;"
+                        # SAFETY CHECK: Get the timestamp, default to 0 if None
+                        ts = n.get('providerPublishTime')
                         
-                        st.markdown(f"""
-                            <div style="background: #1E1E1E; padding: 12px; border-radius: 8px; margin-bottom: 8px; {is_2026}">
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span style="color: #00CC96; font-size: 12px; font-weight: bold;">{dt.strftime('%b %d, %Y')}</span>
-                                    <span style="color: #666; font-size: 11px;">{n.get('publisher')}</span>
-                                </div>
-                                <a href="{n.get('link')}" target="_blank" style="color: white; text-decoration: none; font-size: 14px; font-weight: 500;">{n.get('title')}</a>
-                            </div>
-                        """, unsafe_allow_html=True)
+                        if ts is not None:
+                            dt = datetime.datetime.fromtimestamp(ts)
+                            date_display = dt.strftime('%b %d, %Y')
+                        else:
+                            date_display = "Date Unknown"
+                    
+                        # Now use date_display in your markdown
+                        st.markdown(f"**{date_display}** - {n.get('title')}") 
                         
         except Exception as e:
             st.error(f"Error: {e}")
