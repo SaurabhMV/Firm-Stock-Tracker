@@ -226,8 +226,20 @@ if analyze_btn:
                         df_compare = pd.DataFrame(compare_data).set_index("Ticker")
                         st.dataframe(df_compare, use_container_width=True)
 
+                    # 4. RESTORED DETAILED FUNDAMENTALS (The "Full List")
                     st.write("### 📋 Detailed Financials")
-                    detailed_data = {"Forward P/E": info.get("forwardPE"), "PEG Ratio": info.get("pegRatio"), "ROE": f"{info.get('returnOnEquity', 0)*100:.2f}%"}
+                    detailed_data = {
+                        "Forward P/E": info.get("forwardPE"),
+                        "PEG Ratio": info.get("pegRatio"),
+                        "Price to Book": info.get("priceToBook"),
+                        "Total Cash": f"${info.get('totalCash', 0):,}",
+                        "Total Debt": f"${info.get('totalDebt', 0):,}",
+                        "Operating Margin": f"{info.get('operatingMargins', 0)*100:.2f}%",
+                        "Return on Equity (ROE)": f"{info.get('returnOnEquity', 0)*100:.2f}%",
+                        "Free Cash Flow": f"${info.get('freeCashflow', 0):,}",
+                        "52 Week High": f"${info.get('fiftyTwoWeekHigh')}",
+                        "52 Week Low": f"${info.get('fiftyTwoWeekLow')}"
+                    }
                     st.table(pd.DataFrame.from_dict(detailed_data, orient='index', columns=['Value']))
                     
                 # --- TAB 2: AI THESIS (UPDATED) ---
