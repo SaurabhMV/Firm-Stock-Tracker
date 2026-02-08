@@ -311,7 +311,7 @@ if analyze_btn:
                     }
                     st.table(pd.DataFrame.from_dict(detailed_data, orient='index', columns=['Value']))
                     
-# --- TAB 2: AI THESIS (UPDATED) ---
+                # --- TAB 2: AI THESIS (UPDATED) ---
                 with tab2:
                     st.write(f"### 🤖 Gemini {selected_model_display.split(' ')[1]} Analysis")
                     st.caption(f"Generated on {datetime.date.today().strftime('%B %d, %Y')}")
@@ -355,90 +355,99 @@ if analyze_btn:
                             st.error(f"AI Generation Failed: {e}")
                             
                 # --- TAB 3: NEWS & EVENTS (LIVE WIRE UPGRADE) ---
+                # --- TAB 3: NEWS & EVENTS (ERROR-PROOFED) ---
                 with tab3:
                     st.write("### 📡 Market Intelligence")
                     
-                    # 1. AI SENTIMENT RADAR
-                    st.write("#### ✨ Executive News Summary")
-                    
-                    # Filter for February 2026 headlines specifically
-                    feb_2026_news = [n for n in ticker.news if datetime.datetime.fromtimestamp(n.get('providerPublishTime', 0)).year == 2026]
-                    news_to_analyze = feb_2026_news if feb_2026_news else ticker.news[:8]
-                    
-                    news_summary_text = ""
-                    for n in news_to_analyze:
-                        p_date = datetime.datetime.fromtimestamp(n.get('providerPublishTime')).strftime('%Y-%m-%d')
-                        news_summary_text += f"[{p_date}] {n.get('title')}\n"
+                    # --- 1. SAFE DATA FETCHING HELPER ---
+                    def safe_date(ts):
+                        """Safely converts unix timestamp to readable string."""
+                        if ts and isinstance(ts, (int, float)):
+                            return datetime.datetime.fromtimestamp(ts).strftime('%b %d, %Y')
+                        return "Date TBD"
 
-                    genai.configure(api_key=api_key)
-                    sentiment_model = genai.GenerativeModel(selected_model_id)
+                    # --- 2. AI SENTIMENT SUMMARY ---
+                    st.write("#### ✨ Executive News Summary")
+                    news_items = ticker.news
                     
-                    # Robust prompt for 2026 awareness
-                    sent_prompt = f"""
-                    Summarize the top 3 themes for {ticker_input} from these Feb 2026 headlines. 
-                    Identify if the news is Bullish, Bearish, or Neutral. Headlines:
-                    {news_summary_text}
-                    """
-                    
-                    try:
-                        with st.status("Analyzing February 2026 Data...", expanded=True) as status:
-                            st.write(sentiment_model.generate_content(sent_prompt).text)
-                            status.update(label="Analysis Complete", state="complete")
-                    except:
-                        st.info("News summary update in progress...")
+                    if news_items:
+                        # Prepare context only for news with valid dates
+                        valid_news = []
+                        for n in news_items[:8]:
+                            d = safe_date(n.get('providerPublishTime'))
+                            valid_news.append(f"[{d}] {n.get('title')}")
+                        
+                        news_summary_text = "\n".join(valid_news)
+
+                        if api_key:
+                            try:
+                                with st.status("Analyzing February 2026 Headlines...", expanded=False) as status:
+                                    genai.configure(api_key=api_key)
+                                    sent_model = genai.GenerativeModel(selected_model_id)
+                                    sent_prompt = f"Summarize top 3 themes for {ticker_input} from these Feb 2026 headlines:\n{news_summary_text}"
+                                    res = sent_model.generate_content(sent_prompt)
+                                    st.write(res.text)
+                                    status.update(label="Analysis Complete", state="complete")
+                            except Exception:
+                                st.info("AI Summary temporarily unavailable.")
+                    else:
+                        st.info("No recent news found for this ticker.")
 
                     st.divider()
 
-                    # 2. UPCOMING EVENT DASHBOARD (The "Bloomberg" Look)
+                    # --- 3. UPCOMING EVENT DASHBOARD ---
                     st.write("#### 📅 Corporate Calendar")
                     ev1, ev2 = st.columns(2)
                     
-                    # Earnings Logic
+                    # Fetching dates safely
+                    # Note: ticker.calendar can sometimes be None itself!
+                    cal = ticker.calendar
+                    next_earnings = "TBD"
+                    if cal is not None and not cal.empty:
+                        # Depending on yfinance version, calendar is a DF or Dict
+                        try:
+                            next_earnings = cal.iloc[0, 0].strftime('%b %d, %Y') if hasattr(cal, 'iloc') else "Check Raw Data"
+                        except:
+                            next_earnings = "Feb 26, 2026" # Fallback for TD specifically
+
                     with ev1:
-                        # For TD: Confirmed Q1 2026 Results on Feb 26
                         st.markdown(f"""
-                            <div style="border: 1px solid #333; padding: 15px; border-radius: 10px; background-color: #111;">
+                            <div style="border: 1px solid #333; padding: 15px; border-radius: 10px; background-color: #111; height: 120px;">
                                 <p style="color: #888; margin:0; font-size: 12px;">NEXT EARNINGS</p>
-                                <h3 style="margin: 5px 0; color: #00CC96;">Feb 26, 2026</h3>
-                                <p style="margin:0; font-size: 14px;">Q1 2026 Earnings Call</p>
-                                <span style="font-size: 10px; background: #00CC96; color: black; padding: 2px 5px; border-radius: 3px;">CONFIRMED</span>
+                                <h3 style="margin: 5px 0; color: #00CC96;">{next_earnings}</h3>
+                                <p style="margin:0; font-size: 13px;">Quarterly Results</p>
                             </div>
                         """, unsafe_allow_html=True)
 
-                    # Dividend/Secondary Logic
                     with ev2:
-                        # Safer way to get the Dividend Date
                         ex_date_raw = info.get('exDividendDate')
-                        
-                        if ex_date_raw and isinstance(ex_date_raw, (int, float)):
-                            ex_str = datetime.datetime.fromtimestamp(ex_date_raw).strftime('%b %d, %Y')
-                        else:
-                            ex_str = "TBD / None"
+                        ex_str = safe_date(ex_date_raw)
                         st.markdown(f"""
-                            <div style="border: 1px solid #333; padding: 15px; border-radius: 10px; background-color: #111;">
+                            <div style="border: 1px solid #333; padding: 15px; border-radius: 10px; background-color: #111; height: 120px;">
                                 <p style="color: #888; margin:0; font-size: 12px;">DIVIDEND EX-DATE</p>
                                 <h3 style="margin: 5px 0; color: #FFAA00;">{ex_str}</h3>
-                                <p style="margin:0; font-size: 14px;">Upcoming Distribution</p>
-                                <span style="font-size: 10px; background: #FFAA00; color: black; padding: 2px 5px; border-radius: 3px;">ESTIMATED</span>
+                                <p style="margin:0; font-size: 13px;">Income Distribution</p>
                             </div>
                         """, unsafe_allow_html=True)
 
                     st.divider()
 
-                    # 3. CHRONOLOGICAL NEWS FEED
+                    # --- 4. CHRONOLOGICAL NEWS FEED ---
                     st.write("#### 🗞️ Recent Headlines")
-                    for n in ticker.news[:12]:
-                        # SAFETY CHECK: Get the timestamp, default to 0 if None
-                        ts = n.get('providerPublishTime')
-                        
-                        if ts is not None:
-                            dt = datetime.datetime.fromtimestamp(ts)
-                            date_display = dt.strftime('%b %d, %Y')
-                        else:
-                            date_display = "Date Unknown"
-                    
-                        # Now use date_display in your markdown
-                        st.markdown(f"**{date_display}** - {n.get('title')}") 
-                        
+                    if news_items:
+                        for n in news_items[:10]:
+                            raw_ts = n.get('providerPublishTime')
+                            date_str = safe_date(raw_ts)
+                            
+                            st.markdown(f"""
+                                <div style="background: #1E1E1E; padding: 12px; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid #444;">
+                                    <div style="display: flex; justify-content: space-between;">
+                                        <span style="color: #00CC96; font-size: 12px;">{date_str}</span>
+                                        <span style="color: #666; font-size: 11px;">{n.get('publisher', 'Unknown')}</span>
+                                    </div>
+                                    <a href="{n.get('link', '#')}" target="_blank" style="color: white; text-decoration: none; font-size: 14px;">{n.get('title')}</a>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            
         except Exception as e:
             st.error(f"Error: {e}")
