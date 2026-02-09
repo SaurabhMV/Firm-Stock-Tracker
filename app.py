@@ -96,7 +96,66 @@ def generate_pro_report(symbol, info, tech, news_data, key, model_id):
     ...
     """
     return model.generate_content(prompt).text
-    
+
+def calculate_fundamental_score(ticker_obj):
+    """
+    Calculates a custom 6-point fundamental scorecard.
+    Returns: (Total Score, List of individual metric results)
+    """
+    info = ticker_obj.info
+    score = 0
+    results = []
+
+    # 1. Valuation: P/E Ratio (Lower is usually better for value)
+    pe = info.get('forwardPE')
+    if pe and pe < 25:
+        score += 1
+        results.append({"Metric": "P/E Ratio", "Value": f"{pe:.2f}", "Status": "✅ Healthy", "Note": "Below 25"})
+    else:
+        results.append({"Metric": "P/E Ratio", "Value": f"{pe if pe else 'N/A'}", "Status": "⚠️ High/NA", "Note": "Over 25"})
+
+    # 2. Valuation: PEG Ratio (Price/Earnings to Growth - Under 1 is 'cheap')
+    peg = info.get('pegRatio')
+    if peg and peg < 1:
+        score += 1
+        results.append({"Metric": "PEG Ratio", "Value": f"{peg:.2f}", "Status": "✅ Undervalued", "Note": "Below 1.0"})
+    else:
+        results.append({"Metric": "PEG Ratio", "Value": f"{peg if peg else 'N/A'}", "Status": "❌ Overvalued", "Note": "Above 1.0"})
+
+    # 3. Profitability: ROE (Return on Equity)
+    roe = info.get('returnOnEquity')
+    if roe and roe > 0.15:
+        score += 1
+        results.append({"Metric": "Return on Equity", "Value": f"{roe*100:.1f}%", "Status": "✅ Strong", "Note": "Above 15%"})
+    else:
+        results.append({"Metric": "Return on Equity", "Value": f"{roe*100 if roe else 'N/A'}%", "Status": "❌ Weak", "Note": "Below 15%"})
+
+    # 4. Debt Health: Debt to Equity
+    de = info.get('debtToEquity')
+    if de and de < 100: # yfinance debtToEquity is often expressed as a percentage (100 = 1.0)
+        score += 1
+        results.append({"Metric": "Debt to Equity", "Value": f"{de/100:.2f}", "Status": "✅ Low Debt", "Note": "Below 1.0"})
+    else:
+        results.append({"Metric": "Debt to Equity", "Value": f"{de/100 if de else 'N/A'}", "Status": "⚠️ High Leverage", "Note": "Above 1.0"})
+
+    # 5. Liquidity: Current Ratio
+    cr = info.get('currentRatio')
+    if cr and cr > 1.5:
+        score += 1
+        results.append({"Metric": "Current Ratio", "Value": f"{cr:.2f}", "Status": "✅ Liquid", "Note": "Above 1.5"})
+    else:
+        results.append({"Metric": "Current Ratio", "Value": f"{cr if cr else 'N/A'}", "Status": "❌ Tight", "Note": "Below 1.5"})
+
+    # 6. Profitability: Operating Margins
+    margin = info.get('operatingMargins')
+    if margin and margin > 0.15:
+        score += 1
+        results.append({"Metric": "Operating Margin", "Value": f"{margin*100:.1f}%", "Status": "✅ High", "Note": "Above 15%"})
+    else:
+        results.append({"Metric": "Operating Margin", "Value": f"{margin*100 if margin else 'N/A'}%", "Status": "❌ Thin", "Note": "Below 15%"})
+
+    return score, results
+
 # --- MAIN APP LOGIC ---
 if analyze_btn:
     if not api_key:
@@ -241,6 +300,25 @@ if analyze_btn:
                         "52 Week Low": f"${info.get('fiftyTwoWeekLow')}"
                     }
                     st.table(pd.DataFrame.from_dict(detailed_data, orient='index', columns=['Value']))
+
+                    st.subheader("📊 Fundamental Scorecard")
+                    total_score, score_details = calculate_fundamental_score(ticker_data)
+                    
+                    # Show a big summary metric
+                    color = "green" if total_score >= 4 else "orange" if total_score >= 2 else "red"
+                    st.markdown(f"### Overall Score: :{color}[{total_score} / 6]")
+                    
+                    # Display the breakdown in a clean table
+                    df_score = pd.DataFrame(score_details)
+                    st.table(df_score)
+                    
+                    # Optional: Add Graham's Number (Intrinsic Value Estimate)
+                    eps = ticker_data.info.get('forwardEps')
+                    bv = ticker_data.info.get('bookValue')
+                    if eps and bv and eps > 0 and bv > 0:
+                        graham_number = (22.5 * eps * bv)**0.5
+                        st.info(f"**Graham Number (Intrinsic Value):** ${graham_number:.2f}")                
+                
                     
                 # --- TAB 2: AI THESIS (UPDATED) ---
                 with tab2:
