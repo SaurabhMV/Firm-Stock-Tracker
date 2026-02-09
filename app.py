@@ -345,61 +345,55 @@ if analyze_btn:
                         except Exception as e:
                             st.error(f"AI Generation Failed: {e}")
                             
-                # --- TAB 3: NEWS & EVENTS (LIVE WIRE UPGRADE) ---
-                # --- TAB 3: NEWS & EVENTS (ERROR-PROOFED) ---
+                # --- TAB 3: NEWS & EVENTS (FIXED & ERROR-PROOFED) ---
                 with tab3:
                     st.write("### 📡 Market Intelligence")
                     
-                    # --- 1. SAFE DATA FETCHING HELPER ---
                     def safe_date(ts):
-                        """Safely converts unix timestamp to readable string."""
                         if ts and isinstance(ts, (int, float)):
                             return datetime.datetime.fromtimestamp(ts).strftime('%b %d, %Y')
                         return "Date TBD"
 
-                    # --- 2. AI SENTIMENT SUMMARY ---
                     st.write("#### ✨ Executive News Summary")
                     news_items = ticker.news
                     
                     if news_items:
-                        # Prepare context only for news with valid dates
-                        valid_news = []
-                        for n in news_items[:8]:
-                            d = safe_date(n.get('providerPublishTime'))
-                            valid_news.append(f"[{d}] {n.get('title')}")
-                        
+                        valid_news = [f"[{safe_date(n.get('providerPublishTime'))}] {n.get('title')}" for n in news_items[:8]]
                         news_summary_text = "\n".join(valid_news)
 
                         if api_key:
                             try:
-                                with st.status("Analyzing February 2026 Headlines...", expanded=False) as status:
+                                with st.status("Analyzing Headlines...", expanded=False) as status:
                                     genai.configure(api_key=api_key)
                                     sent_model = genai.GenerativeModel(selected_model_id)
-                                    sent_prompt = f"Summarize top 3 themes for {ticker_input} from these Feb 2026 headlines:\n{news_summary_text}"
+                                    sent_prompt = f"Summarize top 3 themes for {ticker_input} from these headlines:\n{news_summary_text}"
                                     res = sent_model.generate_content(sent_prompt)
                                     st.write(res.text)
                                     status.update(label="Analysis Complete", state="complete")
                             except Exception:
                                 st.info("AI Summary temporarily unavailable.")
                     else:
-                        st.info("No recent news found for this ticker.")
+                        st.info("No recent news found.")
 
                     st.divider()
 
-                    # --- 3. UPCOMING EVENT DASHBOARD ---
+                    # --- CORPORATE CALENDAR (FIXED FOR DICT/DATAFRAME) ---
                     st.write("#### 📅 Corporate Calendar")
                     ev1, ev2 = st.columns(2)
                     
-                    # Fetching dates safely
-                    # Note: ticker.calendar can sometimes be None itself!
                     cal = ticker.calendar
                     next_earnings = "TBD"
-                    if cal is not None and not cal.empty:
-                        # Depending on yfinance version, calendar is a DF or Dict
+                    
+                    # Fix for 'dict' object has no attribute 'empty'
+                    if cal is not None:
                         try:
-                            next_earnings = cal.iloc[0, 0].strftime('%b %d, %Y') if hasattr(cal, 'iloc') else "Check Raw Data"
+                            if isinstance(cal, pd.DataFrame) and not cal.empty:
+                                next_earnings = cal.iloc[0, 0].strftime('%b %d, %Y')
+                            elif isinstance(cal, dict):
+                                e_dates = cal.get('Earnings Date') or cal.get('Earnings')
+                                if e_dates: next_earnings = e_dates[0].strftime('%b %d, %Y')
                         except:
-                            next_earnings = "Feb 26, 2026" # Fallback for TD specifically
+                            next_earnings = "Check Investor Relations"
 
                     with ev1:
                         st.markdown(f"""
@@ -421,94 +415,48 @@ if analyze_btn:
                             </div>
                         """, unsafe_allow_html=True)
 
-                    st.divider()
-
-                    # --- 4. CHRONOLOGICAL NEWS FEED ---
-                    st.write("#### 🗞️ Recent Headlines")
-                    if news_items:
-                        for n in news_items[:10]:
-                            raw_ts = n.get('providerPublishTime')
-                            date_str = safe_date(raw_ts)
-                            
-                            st.markdown(f"""
-                                <div style="background: #1E1E1E; padding: 12px; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid #444;">
-                                    <div style="display: flex; justify-content: space-between;">
-                                        <span style="color: #00CC96; font-size: 12px;">{date_str}</span>
-                                        <span style="color: #666; font-size: 11px;">{n.get('publisher', 'Unknown')}</span>
-                                    </div>
-                                    <a href="{n.get('link', '#')}" target="_blank" style="color: white; text-decoration: none; font-size: 14px;">{n.get('title')}</a>
-                                </div>
-                            """, unsafe_allow_html=True)
-
+                # --- TAB 4: FUNDAMENTAL SCORECARD (FIXED VARIABLE NAME) ---
                 with tab4:
                     st.header("Fundamental Scorecard")
                     st.write("This scorecard evaluates the stock across 6 key pillars of value and health.")
                 
-                    # Fetch fresh info
-                    info = ticker_data.info
+                    # FIXED: Changed 'ticker_data.info' to 'ticker.info'
+                    f_info = ticker.info
                     
-                    # Define Metrics and Thresholds
                     metrics = [
-                        {"name": "P/E Ratio (Forward)", "key": "forwardPE", "op": "lt", "val": 25, "desc": "Lower is cheaper (Target < 25)"},
-                        {"name": "PEG Ratio", "key": "pegRatio", "op": "lt", "val": 1.0, "desc": "Price vs Growth (Target < 1.0)"},
-                        {"name": "Return on Equity (ROE)", "key": "returnOnEquity", "op": "gt", "val": 0.15, "desc": "Efficiency (Target > 15%)"},
-                        {"name": "Debt to Equity", "key": "debtToEquity", "op": "lt", "val": 100, "desc": "Solvency (Target < 1.0 or 100%)"},
-                        {"name": "Current Ratio", "key": "currentRatio", "op": "gt", "val": 1.5, "desc": "Liquidity (Target > 1.5)"},
-                        {"name": "Operating Margin", "key": "operatingMargins", "op": "gt", "val": 0.15, "desc": "Profitability (Target > 15%)"}
+                        {"name": "P/E Ratio (Forward)", "key": "forwardPE", "op": "lt", "val": 25, "desc": "Target < 25"},
+                        {"name": "PEG Ratio", "key": "pegRatio", "op": "lt", "val": 1.0, "desc": "Target < 1.0"},
+                        {"name": "Return on Equity (ROE)", "key": "returnOnEquity", "op": "gt", "val": 0.15, "desc": "Target > 15%"},
+                        {"name": "Debt to Equity", "key": "debtToEquity", "op": "lt", "val": 100, "desc": "Target < 100%"},
+                        {"name": "Current Ratio", "key": "currentRatio", "op": "gt", "val": 1.5, "desc": "Target > 1.5"},
+                        {"name": "Operating Margin", "key": "operatingMargins", "op": "gt", "val": 0.15, "desc": "Target > 15%"}
                     ]
                 
-                    score = 0
+                    f_score = 0
                     score_rows = []
                 
                     for m in metrics:
-                        raw_val = info.get(m['key'])
+                        val = f_info.get(m['key'])
                         status = "❌"
-                        
-                        if raw_val is not None:
-                            # Logic check
-                            passed = (m['op'] == 'lt' and raw_val < m['val']) or (m['op'] == 'gt' and raw_val > m['val'])
+                        if val is not None:
+                            passed = (m['op'] == 'lt' and val < m['val']) or (m['op'] == 'gt' and val > m['val'])
                             if passed:
-                                score += 1
+                                f_score += 1
                                 status = "✅"
-                            
-                            # Formatting for display
-                            display_val = f"{raw_val*100:.1f}%" if "Margin" in m['name'] or "ROE" in m['name'] else f"{raw_val:.2f}"
+                            disp = f"{val*100:.1f}%" if "%" in m['desc'] else f"{val:.2f}"
                         else:
-                            display_val = "N/A"
+                            disp = "N/A"
+                        score_rows.append({"Status": status, "Metric": m['name'], "Value": disp, "Target": m['desc']})
                 
-                        score_rows.append({"Status": status, "Metric": m['name'], "Value": display_val, "Target": m['desc']})
+                    sc1, sc2 = st.columns([1, 2])
+                    with sc1:
+                        st.metric("Fundamental Health", f"{f_score} / 6")
+                        if f_score >= 5: st.success("Strong Fundamentals")
+                        elif f_score >= 3: st.warning("Average Health")
+                        else: st.error("Weak Fundamentals")
                 
-                    # --- Display Summary ---
-                    col1, col2 = st.columns([1, 2])
-                    
-                    with col1:
-                        # Visual Score Gauge
-                        st.metric("Total Score", f"{score} / 6")
-                        if score >= 5:
-                            st.success("Investment Grade: **Strong Buy**")
-                        elif score >= 3:
-                            st.warning("Investment Grade: **Hold / Neutral**")
-                        else:
-                            st.error("Investment Grade: **High Risk**")
-                
-                    with col2:
-                        # Breakdown Table
+                    with sc2:
                         st.table(score_rows)
-                
-                    # --- Intrinsic Value Bonus ---
-                    st.divider()
-                    eps = info.get('forwardEps')
-                    bv = info.get('bookValue')
-                    if eps and bv and eps > 0 and bv > 0:
-                        # Graham Number Formula: sqrt(22.5 * EPS * Book Value)
-                        graham_number = (22.5 * eps * bv)**0.5
-                        current_price = info.get('currentPrice', 0)
-                        upside = ((graham_number / current_price) - 1) * 100
-                        
-                        st.subheader("Intrinsic Value Estimate")
-                        st.write(f"Based on the Benjamin Graham formula, the theoretical 'fair value' is **${graham_number:.2f}**.")
-                        st.metric("Margin of Safety", f"{upside:.1f}%", delta=f"{upside:.1f}%")
-
                             
         except Exception as e:
             st.error(f"Error: {e}")
