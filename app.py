@@ -438,7 +438,7 @@ if analyze_btn:
                                     </div>
                                     <a href="{n.get('link', '#')}" target="_blank" style="color: white; text-decoration: none; font-size: 14px;">{n.get('title')}</a>
                                 </div>
-                            """, unsafe_allow_html=True)"""
+                            """, unsafe_allow_html=True)
 
                 with tab4:
                     st.header("Fundamental Scorecard")
