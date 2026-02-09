@@ -97,82 +97,79 @@ def generate_pro_report(symbol, info, tech, news_data, key, model_id):
     """
     return model.generate_content(prompt).text
 
+def get_val(df, options):
+    """Helper to find the first available row from a list of possible names."""
+    for opt in options:
+        if opt in df.index:
+            return df.loc[opt]
+    return None
+
 def calculate_piotroski_score(ticker_obj):
-    """Calculates the 9-point Piotroski F-Score (YoY Comparison)."""
     try:
-        # Fetch data (Annual)
         income = ticker_obj.financials
         balance = ticker_obj.balance_sheet
         cashflow = ticker_obj.cashflow
 
-        # We need at least 2 years of data
-        if income.shape[1] < 2: return None, "Insufficient data for YoY comparison."
+        if income.empty or income.shape[1] < 2:
+            return None, "Insufficient annual data (need 2+ years)."
 
-        # Indices: 0 is current year, 1 is previous year
         f_score = 0
         details = []
 
-        # --- PROFITABILITY (4 Points) ---
-        # 1. Positive Net Income
-        ni_current = income.loc['Net Income'].iloc[0]
-        if ni_current > 0: f_score += 1
-        details.append(("Net Income > 0", "✅" if ni_current > 0 else "❌"))
-
-        # 2. Positive Operating Cash Flow
-        ocf_current = cashflow.loc['Operating Cash Flow'].iloc[0]
-        if ocf_current > 0: f_score += 1
-        details.append(("Cash Flow > 0", "✅" if ocf_current > 0 else "❌"))
+        # 1 & 2. Profitability (Net Income & Operating Cash Flow)
+        ni = get_val(income, ['Net Income', 'Net Income Common Stockholders'])
+        ocf = get_val(cashflow, ['Operating Cash Flow', 'Cash Flow From Operating Activities'])
+        
+        if ni is not None and ni.iloc[0] > 0: f_score += 1
+        if ocf is not None and ocf.iloc[0] > 0: f_score += 1
 
         # 3. ROA Improvement
-        assets_curr = balance.loc['Total Assets'].iloc[0]
-        assets_prev = balance.loc['Total Assets'].iloc[1]
-        roa_curr = ni_current / assets_curr
-        roa_prev = income.loc['Net Income'].iloc[1] / assets_prev
-        if roa_curr > roa_prev: f_score += 1
-        details.append(("ROA Improving", "✅" if roa_curr > roa_prev else "❌"))
+        assets = get_val(balance, ['Total Assets'])
+        if all(x is not None for x in [ni, assets]):
+            roa_curr = ni.iloc[0] / assets.iloc[0]
+            roa_prev = ni.iloc[1] / assets.iloc[1]
+            if roa_curr > roa_prev: f_score += 1
+        
+        # 4. Accruals (OCF > Net Income)
+        if ni is not None and ocf is not None:
+            if ocf.iloc[0] > ni.iloc[0]: f_score += 1
 
-        # 4. Accrual (OCF > Net Income)
-        if ocf_current > ni_current: f_score += 1
-        details.append(("Quality of Earnings (OCF > NI)", "✅" if ocf_current > ni_current else "❌"))
+        # 5. Leverage (Long Term Debt)
+        debt = get_val(balance, ['Long Term Debt', 'Total Non Current Liabilities Net Minority Interest'])
+        if debt is not None and assets is not None:
+            # Check if debt is decreasing relative to assets
+            if (debt.iloc[0]/assets.iloc[0]) < (debt.iloc[1]/assets.iloc[1]): f_score += 1
 
-        # --- LEVERAGE & LIQUIDITY (3 Points) ---
-        # 5. Lower Long-Term Debt Ratio
-        try:
-            lt_debt_curr = balance.loc['Long Term Debt'].iloc[0] / assets_curr
-            lt_debt_prev = balance.loc['Long Term Debt'].iloc[1] / assets_prev
-            if lt_debt_curr < lt_debt_prev: f_score += 1
-            details.append(("Lower Debt Ratio", "✅" if lt_debt_curr < lt_debt_prev else "❌"))
-        except: details.append(("Lower Debt Ratio", "⚠️ N/A"))
+        # 6. Liquidity (Current Ratio)
+        ca = get_val(balance, ['Current Assets', 'Total Current Assets'])
+        cl = get_val(balance, ['Current Liabilities', 'Total Current Liabilities'])
+        if ca is not None and cl is not None:
+            if (ca.iloc[0]/cl.iloc[0]) > (ca.iloc[1]/cl.iloc[1]): f_score += 1
 
-        # 6. Higher Current Ratio
-        cr_curr = balance.loc['Current Assets'].iloc[0] / balance.loc['Current Liabilities'].iloc[0]
-        cr_prev = balance.loc['Current Assets'].iloc[1] / balance.loc['Current Liabilities'].iloc[1]
-        if cr_curr > cr_prev: f_score += 1
-        details.append(("Better Liquidity", "✅" if cr_curr > cr_prev else "❌"))
+        # 7. NO NEW SHARES (The fix for your error)
+        shares = get_val(balance, ['Ordinary Share Capital', 'Common Stock', 'Share Capital', 'Issuance Of Capital Stock'])
+        if shares is not None:
+            # For share capital, lower or equal is a point
+            if shares.iloc[0] <= shares.iloc[1]: f_score += 1
+            details.append(("No Share Dilution", "✅" if shares.iloc[0] <= shares.iloc[1] else "❌"))
+        else:
+            details.append(("No Share Dilution", "⚠️ Row Not Found"))
 
-        # 7. No New Shares (Dilution)
-        shares_curr = balance.loc['Ordinary Share Capital'].iloc[0]
-        shares_prev = balance.loc['Ordinary Share Capital'].iloc[1]
-        if shares_curr <= shares_prev: f_score += 1
-        details.append(("No Share Dilution", "✅" if shares_curr <= shares_prev else "❌"))
+        # 8 & 9. Efficiency (Gross Margin & Asset Turnover)
+        rev = get_val(income, ['Total Revenue'])
+        cogs = get_val(income, ['Cost Of Revenue'])
+        if all(x is not None for x in [rev, cogs, assets]):
+            # Margin check
+            gm_curr = (rev.iloc[0] - cogs.iloc[0]) / rev.iloc[0]
+            gm_prev = (rev.iloc[1] - cogs.iloc[1]) / rev.iloc[1]
+            if gm_curr > gm_prev: f_score += 1
+            # Turnover check
+            if (rev.iloc[0]/assets.iloc[0]) > (rev.iloc[1]/assets.iloc[1]): f_score += 1
 
-        # --- EFFICIENCY (2 Points) ---
-        # 8. Higher Gross Margin
-        gm_curr = (income.loc['Total Revenue'].iloc[0] - income.loc['Cost Of Revenue'].iloc[0]) / income.loc['Total Revenue'].iloc[0]
-        gm_prev = (income.loc['Total Revenue'].iloc[1] - income.loc['Cost Of Revenue'].iloc[1]) / income.loc['Total Revenue'].iloc[1]
-        if gm_curr > gm_prev: f_score += 1
-        details.append(("Margin Improvement", "✅" if gm_curr > gm_prev else "❌"))
-
-        # 9. Higher Asset Turnover
-        at_curr = income.loc['Total Revenue'].iloc[0] / assets_curr
-        at_prev = income.loc['Total Revenue'].iloc[1] / assets_prev
-        if at_curr > at_prev: f_score += 1
-        details.append(("Asset Efficiency", "✅" if at_curr > at_prev else "❌"))
-
-        return f_score, details
+        return f_score, f"Calculated: {f_score}/9"
     except Exception as e:
-        return None, str(e)
-
+        return None, f"Error: {str(e)}"
+        
 def calculate_fundamental_score(ticker_obj):
     """
     Calculates a custom 6-point fundamental scorecard.
