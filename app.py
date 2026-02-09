@@ -334,6 +334,7 @@ if analyze_btn:
                         yaxis=dict(title="Stock Price ($)"),
                         yaxis2=dict(title="S&P 500 ($)", overlaying="y", side="right", showgrid=False)
                     )
+                    st.plotly_chart(fig, use_container_width=True)
                     
                     # Performance Summary
                     stock_perf = ((history['Close'].iloc[-1] - history['Close'].iloc[0]) / history['Close'].iloc[0]) * 100
