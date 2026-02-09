@@ -97,6 +97,82 @@ def generate_pro_report(symbol, info, tech, news_data, key, model_id):
     """
     return model.generate_content(prompt).text
 
+def calculate_piotroski_score(ticker_obj):
+    """Calculates the 9-point Piotroski F-Score (YoY Comparison)."""
+    try:
+        # Fetch data (Annual)
+        income = ticker_obj.financials
+        balance = ticker_obj.balance_sheet
+        cashflow = ticker_obj.cashflow
+
+        # We need at least 2 years of data
+        if income.shape[1] < 2: return None, "Insufficient data for YoY comparison."
+
+        # Indices: 0 is current year, 1 is previous year
+        f_score = 0
+        details = []
+
+        # --- PROFITABILITY (4 Points) ---
+        # 1. Positive Net Income
+        ni_current = income.loc['Net Income'].iloc[0]
+        if ni_current > 0: f_score += 1
+        details.append(("Net Income > 0", "✅" if ni_current > 0 else "❌"))
+
+        # 2. Positive Operating Cash Flow
+        ocf_current = cashflow.loc['Operating Cash Flow'].iloc[0]
+        if ocf_current > 0: f_score += 1
+        details.append(("Cash Flow > 0", "✅" if ocf_current > 0 else "❌"))
+
+        # 3. ROA Improvement
+        assets_curr = balance.loc['Total Assets'].iloc[0]
+        assets_prev = balance.loc['Total Assets'].iloc[1]
+        roa_curr = ni_current / assets_curr
+        roa_prev = income.loc['Net Income'].iloc[1] / assets_prev
+        if roa_curr > roa_prev: f_score += 1
+        details.append(("ROA Improving", "✅" if roa_curr > roa_prev else "❌"))
+
+        # 4. Accrual (OCF > Net Income)
+        if ocf_current > ni_current: f_score += 1
+        details.append(("Quality of Earnings (OCF > NI)", "✅" if ocf_current > ni_current else "❌"))
+
+        # --- LEVERAGE & LIQUIDITY (3 Points) ---
+        # 5. Lower Long-Term Debt Ratio
+        try:
+            lt_debt_curr = balance.loc['Long Term Debt'].iloc[0] / assets_curr
+            lt_debt_prev = balance.loc['Long Term Debt'].iloc[1] / assets_prev
+            if lt_debt_curr < lt_debt_prev: f_score += 1
+            details.append(("Lower Debt Ratio", "✅" if lt_debt_curr < lt_debt_prev else "❌"))
+        except: details.append(("Lower Debt Ratio", "⚠️ N/A"))
+
+        # 6. Higher Current Ratio
+        cr_curr = balance.loc['Current Assets'].iloc[0] / balance.loc['Current Liabilities'].iloc[0]
+        cr_prev = balance.loc['Current Assets'].iloc[1] / balance.loc['Current Liabilities'].iloc[1]
+        if cr_curr > cr_prev: f_score += 1
+        details.append(("Better Liquidity", "✅" if cr_curr > cr_prev else "❌"))
+
+        # 7. No New Shares (Dilution)
+        shares_curr = balance.loc['Ordinary Share Capital'].iloc[0]
+        shares_prev = balance.loc['Ordinary Share Capital'].iloc[1]
+        if shares_curr <= shares_prev: f_score += 1
+        details.append(("No Share Dilution", "✅" if shares_curr <= shares_prev else "❌"))
+
+        # --- EFFICIENCY (2 Points) ---
+        # 8. Higher Gross Margin
+        gm_curr = (income.loc['Total Revenue'].iloc[0] - income.loc['Cost Of Revenue'].iloc[0]) / income.loc['Total Revenue'].iloc[0]
+        gm_prev = (income.loc['Total Revenue'].iloc[1] - income.loc['Cost Of Revenue'].iloc[1]) / income.loc['Total Revenue'].iloc[1]
+        if gm_curr > gm_prev: f_score += 1
+        details.append(("Margin Improvement", "✅" if gm_curr > gm_prev else "❌"))
+
+        # 9. Higher Asset Turnover
+        at_curr = income.loc['Total Revenue'].iloc[0] / assets_curr
+        at_prev = income.loc['Total Revenue'].iloc[1] / assets_prev
+        if at_curr > at_prev: f_score += 1
+        details.append(("Asset Efficiency", "✅" if at_curr > at_prev else "❌"))
+
+        return f_score, details
+    except Exception as e:
+        return None, str(e)
+
 def calculate_fundamental_score(ticker_obj):
     """
     Calculates a custom 6-point fundamental scorecard.
@@ -417,6 +493,29 @@ if analyze_btn:
 
                 # --- TAB 4: FUNDAMENTAL SCORECARD (FIXED VARIABLE NAME) ---
                 with tab4:
+                    st.header("🛡️ Piotroski F-Score (YoY Health)")
+                    
+                    with st.spinner("Calculating year-over-year balance sheet improvements..."):
+                        f_score, f_details = calculate_piotroski_score(ticker)
+                    
+                    if f_score is not None:
+                        col_f1, col_f2 = st.columns([1, 2])
+                        with col_f1:
+                            st.metric("Piotroski Score", f"{f_score} / 9")
+                            if f_score >= 8: st.success("🎯 Elite Financial Strength")
+                            elif f_score >= 5: st.warning("⚖️ Stable")
+                            else: st.error("🚨 Warning: Deteriorating Health")
+                        
+                        with col_f2:
+                            # Create a nice 2-column list for details
+                            df_f = pd.DataFrame(f_details, columns=["Metric", "Status"])
+                            st.table(df_f)
+                    else:
+                        st.error(f"F-Score calculation failed: {f_details}")
+                
+                    st.divider()
+                    # ... Rest of your Fundamental Scorecard code (P/E, PEG, etc.)
+                    
                     st.header("Fundamental Scorecard")
                     st.write("This scorecard evaluates the stock across 6 key pillars of value and health.")
                 
