@@ -166,7 +166,7 @@ def calculate_piotroski_score(ticker_obj):
             # Turnover check
             if (rev.iloc[0]/assets.iloc[0]) > (rev.iloc[1]/assets.iloc[1]): f_score += 1
 
-        return f_score, f"Calculated: {f_score}/9"
+        return f_score, details 
     except Exception as e:
         return None, f"Error: {str(e)}"
         
@@ -490,25 +490,27 @@ if analyze_btn:
 
                 # --- TAB 4: FUNDAMENTAL SCORECARD (FIXED VARIABLE NAME) ---
                 with tab4:
-                    st.header("🛡️ Piotroski F-Score (YoY Health)")
+                    st.header("🛡️ Piotroski F-Score")
                     
-                    with st.spinner("Calculating year-over-year balance sheet improvements..."):
-                        f_score, f_details = calculate_piotroski_score(ticker)
+                    with st.spinner("Analyzing Year-over-Year improvements..."):
+                        f_score, f_result = calculate_piotroski_score(ticker)
                     
-                    if f_score is not None:
+                    # Check if f_result is a list (Success) or a string (Error)
+                    if isinstance(f_result, list):
                         col_f1, col_f2 = st.columns([1, 2])
                         with col_f1:
                             st.metric("Piotroski Score", f"{f_score} / 9")
-                            if f_score >= 8: st.success("🎯 Elite Financial Strength")
-                            elif f_score >= 5: st.warning("⚖️ Stable")
-                            else: st.error("🚨 Warning: Deteriorating Health")
+                            if f_score >= 8: st.success("🎯 Elite Strength")
+                            elif f_score >= 5: st.warning("⚖️ Average Health")
+                            else: st.error("🚨 Financial Distress")
                         
                         with col_f2:
-                            # Create a nice 2-column list for details
-                            df_f = pd.DataFrame(f_details, columns=["Metric", "Status"])
+                            # Correctly calling the DataFrame constructor with a list of tuples
+                            df_f = pd.DataFrame(f_result, columns=["Check", "Status"])
                             st.table(df_f)
                     else:
-                        st.error(f"F-Score calculation failed: {f_details}")
+                        # If f_result is the error string
+                        st.error(f"F-Score calculation failed: {f_result}")
                 
                     st.divider()
                     # ... Rest of your Fundamental Scorecard code (P/E, PEG, etc.)
