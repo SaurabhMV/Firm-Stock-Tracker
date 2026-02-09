@@ -567,7 +567,7 @@ if analyze_btn:
                     if ticker:
                         try:
                             # Fetch Data
-                            df = yf.download(ticker, period=period, interval=interval, auto_adjust=True)
+                            df = yf.download(ticker.ticker, period=period, interval=interval, auto_adjust=True)
                             
                             if df.empty:
                                 st.error("No data found for this ticker.")
