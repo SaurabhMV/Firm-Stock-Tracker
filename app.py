@@ -183,7 +183,7 @@ if analyze_btn:
                 c3.metric("Consensus", analyst['Consensus'])
                 c4.metric("RSI (14)", f"{tech_data['RSI']:.1f}")
 
-                tab1, tab2, tab3 = st.tabs(["📈 Charts & Financials", "🧠 AI Thesis", "📰 Market News"])
+                tab1, tab2, tab3, tab4 = st.tabs(["📈 Charts & Financials", "🧠 AI Thesis", "📰 Market News", "⚖️ Fundamental Scorecard"])
 
                 # --- TAB 1: CHARTS & FINANCIALS ---
                 with tab1:
@@ -299,25 +299,7 @@ if analyze_btn:
                         "52 Week High": f"${info.get('fiftyTwoWeekHigh')}",
                         "52 Week Low": f"${info.get('fiftyTwoWeekLow')}"
                     }
-                    st.table(pd.DataFrame.from_dict(detailed_data, orient='index', columns=['Value']))
-
-                    st.subheader("📊 Fundamental Scorecard")
-                    total_score, score_details = calculate_fundamental_score(ticker_data)
-                    
-                    # Show a big summary metric
-                    color = "green" if total_score >= 4 else "orange" if total_score >= 2 else "red"
-                    st.markdown(f"### Overall Score: :{color}[{total_score} / 6]")
-                    
-                    # Display the breakdown in a clean table
-                    df_score = pd.DataFrame(score_details)
-                    st.table(df_score)
-                    
-                    # Optional: Add Graham's Number (Intrinsic Value Estimate)
-                    eps = ticker_data.info.get('forwardEps')
-                    bv = ticker_data.info.get('bookValue')
-                    if eps and bv and eps > 0 and bv > 0:
-                        graham_number = (22.5 * eps * bv)**0.5
-                        st.info(f"**Graham Number (Intrinsic Value):** ${graham_number:.2f}")                
+                    st.table(pd.DataFrame.from_dict(detailed_data, orient='index', columns=['Value']))             
                 
                     
                 # --- TAB 2: AI THESIS (UPDATED) ---
@@ -456,7 +438,77 @@ if analyze_btn:
                                     </div>
                                     <a href="{n.get('link', '#')}" target="_blank" style="color: white; text-decoration: none; font-size: 14px;">{n.get('title')}</a>
                                 </div>
-                            """, unsafe_allow_html=True)
+                            """, unsafe_allow_html=True)"""
+
+                with tab4:
+                    st.header("Fundamental Scorecard")
+                    st.write("This scorecard evaluates the stock across 6 key pillars of value and health.")
+                
+                    # Fetch fresh info
+                    info = ticker_data.info
+                    
+                    # Define Metrics and Thresholds
+                    metrics = [
+                        {"name": "P/E Ratio (Forward)", "key": "forwardPE", "op": "lt", "val": 25, "desc": "Lower is cheaper (Target < 25)"},
+                        {"name": "PEG Ratio", "key": "pegRatio", "op": "lt", "val": 1.0, "desc": "Price vs Growth (Target < 1.0)"},
+                        {"name": "Return on Equity (ROE)", "key": "returnOnEquity", "op": "gt", "val": 0.15, "desc": "Efficiency (Target > 15%)"},
+                        {"name": "Debt to Equity", "key": "debtToEquity", "op": "lt", "val": 100, "desc": "Solvency (Target < 1.0 or 100%)"},
+                        {"name": "Current Ratio", "key": "currentRatio", "op": "gt", "val": 1.5, "desc": "Liquidity (Target > 1.5)"},
+                        {"name": "Operating Margin", "key": "operatingMargins", "op": "gt", "val": 0.15, "desc": "Profitability (Target > 15%)"}
+                    ]
+                
+                    score = 0
+                    score_rows = []
+                
+                    for m in metrics:
+                        raw_val = info.get(m['key'])
+                        status = "❌"
+                        
+                        if raw_val is not None:
+                            # Logic check
+                            passed = (m['op'] == 'lt' and raw_val < m['val']) or (m['op'] == 'gt' and raw_val > m['val'])
+                            if passed:
+                                score += 1
+                                status = "✅"
+                            
+                            # Formatting for display
+                            display_val = f"{raw_val*100:.1f}%" if "Margin" in m['name'] or "ROE" in m['name'] else f"{raw_val:.2f}"
+                        else:
+                            display_val = "N/A"
+                
+                        score_rows.append({"Status": status, "Metric": m['name'], "Value": display_val, "Target": m['desc']})
+                
+                    # --- Display Summary ---
+                    col1, col2 = st.columns([1, 2])
+                    
+                    with col1:
+                        # Visual Score Gauge
+                        st.metric("Total Score", f"{score} / 6")
+                        if score >= 5:
+                            st.success("Investment Grade: **Strong Buy**")
+                        elif score >= 3:
+                            st.warning("Investment Grade: **Hold / Neutral**")
+                        else:
+                            st.error("Investment Grade: **High Risk**")
+                
+                    with col2:
+                        # Breakdown Table
+                        st.table(score_rows)
+                
+                    # --- Intrinsic Value Bonus ---
+                    st.divider()
+                    eps = info.get('forwardEps')
+                    bv = info.get('bookValue')
+                    if eps and bv and eps > 0 and bv > 0:
+                        # Graham Number Formula: sqrt(22.5 * EPS * Book Value)
+                        graham_number = (22.5 * eps * bv)**0.5
+                        current_price = info.get('currentPrice', 0)
+                        upside = ((graham_number / current_price) - 1) * 100
+                        
+                        st.subheader("Intrinsic Value Estimate")
+                        st.write(f"Based on the Benjamin Graham formula, the theoretical 'fair value' is **${graham_number:.2f}**.")
+                        st.metric("Margin of Safety", f"{upside:.1f}%", delta=f"{upside:.1f}%")
+
                             
         except Exception as e:
             st.error(f"Error: {e}")
