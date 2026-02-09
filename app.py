@@ -256,7 +256,7 @@ if analyze_btn:
                 c3.metric("Consensus", analyst['Consensus'])
                 c4.metric("RSI (14)", f"{tech_data['RSI']:.1f}")
 
-                tab1, tab2, tab3, tab4 = st.tabs(["📈 Charts & Financials", "🧠 AI Thesis", "📰 Market News", "⚖️ Fundamental Scorecard"])
+                tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 Charts & Financials", "🧠 AI Thesis", "📰 Market News", "⚖️ Fundamental Scorecard", "📈 SMA Strategy"])
 
                 # --- TAB 1: CHARTS & FINANCIALS ---
                 with tab1:
@@ -555,6 +555,78 @@ if analyze_btn:
                 
                     with sc2:
                         st.table(score_rows)
+
+                with tab5:
+                    st.header("18 vs 50 SMA Strategy + Volume Analysis")
+                    
+                    if ticker:
+                        try:
+                            # Fetch Data
+                            df = yf.download(ticker, period=period, interval=interval, auto_adjust=True)
+                            
+                            if df.empty:
+                                st.error("No data found for this ticker.")
+                            else:
+                                # Handle MultiIndex column names (Common in 2025/2026 yfinance versions)
+                                if isinstance(df.columns, pd.MultiIndex):
+                                    df.columns = df.columns.get_level_values(0)
+                
+                                # --- Calculations ---
+                                df['SMA18'] = df['Close'].rolling(window=18).mean()
+                                df['SMA50'] = df['Close'].rolling(window=50).mean()
+                                df['Vol_Avg'] = df['Volume'].rolling(window=20).mean()
+                                
+                                # RSI Calculation
+                                delta = df['Close'].diff()
+                                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                                df['RSI'] = 100 - (100 / (1 + (gain / loss)))
+                
+                                # Signal Logic
+                                df['Signal'] = 0.0
+                                # We start logic after the 50th bar to ensure SMA50 is populated
+                                if len(df) > 50:
+                                    df.loc[df.index[50:], 'Signal'] = np.where(df['SMA18'][50:] > df['SMA50'][50:], 1.0, 0.0)
+                                    df['Position'] = df['Signal'].diff()
+                
+                                # --- Plotting ---
+                                fig = make_subplots(
+                                    rows=3, cols=1, shared_xaxes=True, 
+                                    vertical_spacing=0.05, 
+                                    subplot_titles=(f'{ticker} Price & SMAs', 'Volume + 20-MA', 'RSI Momentum'), 
+                                    row_width=[0.2, 0.2, 0.6] 
+                                )
+                
+                                # Row 1: Price & Strategy
+                                fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], 
+                                                             low=df['Low'], close=df['Close'], name='Price'), row=1, col=1)
+                                fig.add_trace(go.Scatter(x=df.index, y=df['SMA18'], line=dict(color='orange', width=2), name='18 SMA'), row=1, col=1)
+                                fig.add_trace(go.Scatter(x=df.index, y=df['SMA50'], line=dict(color='cyan', width=2), name='50 SMA'), row=1, col=1)
+                
+                                # Buy/Sell Markers
+                                buy_pts = df[df['Position'] == 1]
+                                fig.add_trace(go.Scatter(x=buy_pts.index, y=buy_pts['SMA18'], mode='markers',
+                                                         marker=dict(symbol='triangle-up', size=12, color='lime'), name='BUY'), row=1, col=1)
+                
+                                sell_pts = df[df['Position'] == -1]
+                                fig.add_trace(go.Scatter(x=sell_pts.index, y=sell_pts['SMA18'], mode='markers',
+                                                         marker=dict(symbol='triangle-down', size=12, color='red'), name='SELL'), row=1, col=1)
+                
+                                # Row 2: Volume
+                                vol_colors = ['#26a69a' if c >= o else '#ef5350' for c, o in zip(df['Close'], df['Open'])]
+                                fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', marker_color=vol_colors), row=2, col=1)
+                                fig.add_trace(go.Scatter(x=df.index, y=df['Vol_Avg'], line=dict(color='yellow', width=1.5), name='Vol 20-MA'), row=2, col=1)
+                
+                                # Row 3: RSI
+                                fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='magenta'), name='RSI'), row=3, col=1)
+                                fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
+                                fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
+                
+                                fig.update_layout(template="plotly_dark", height=800, xaxis_rangeslider_visible=False, showlegend=True)
+                                st.plotly_chart(fig, use_container_width=True)
+                
+                        except Exception as e:
+                            st.error(f"Strategy Error: {e}")
                             
         except Exception as e:
             st.error(f"Error: {e}")
