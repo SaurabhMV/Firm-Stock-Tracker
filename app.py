@@ -46,6 +46,10 @@ ticker_input = st.text_input("Stock Ticker", value="GOOG").upper()
 analyze_btn = st.button("Generate Deep Research")
 period = st.sidebar.selectbox("History", ["1mo", "6mo", "1y", "2y", "5y", "max"], index=2)
 interval = st.sidebar.selectbox("Interval", ["1h", "1d", "1wk"], index=1)
+
+if ticker_input:
+    ticker_data = yf.Ticker(ticker_input)
+    
 # --- HELPER FUNCTIONS ---
 
 def get_analyst_data(ticker):
