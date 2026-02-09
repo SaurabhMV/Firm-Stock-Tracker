@@ -287,72 +287,54 @@ if analyze_btn:
                     st.divider()
 
                     # --- INTERACTIVE PRICE CHART WITH BOLLINGER BANDS ---
-                    st.subheader("Price Action & Technical Bands")
+                    st.write("### 📈 Price Action & Technical Bands")
                     
-                    # 1. Date Range Selector
-                    col1, col2 = st.columns([2, 3])
-                    with col1:
-                        # Determine the min and max dates available in your fetched history
-                        min_date = history.index.min().date()
-                        max_date = history.index.max().date()
-                        
-                        # Date input widget (returns a tuple)
-                        date_range = st.date_input(
-                            "Select Custom Date Range",
-                            value=(min_date, max_date),
-                            min_value=min_date,
-                            max_value=max_date
-                        )
-                
-                    # 2. Filter the data based on selection
-                    if len(date_range) == 2:
-                        start_date, end_date = date_range
-                        # Filter both the ticker and S&P 500 dataframes
-                        mask = (history.index.date >= start_date) & (history.index.date <= end_date)
-                        display_df = history.loc[mask]
-                        display_spy = spy_hist.loc[spy_hist.index.date >= start_date] # For relative comparison
-                    else:
-                        display_df = history
-                        display_spy = spy_hist
-                
-                    # 3. Updated Plotly Figure
+                    # Bollinger Band Calculation (20-day SMA)
+                    bb_window = 20
+                    history['SMA20'] = history['Close'].rolling(window=bb_window).mean()
+                    history['StdDev'] = history['Close'].rolling(window=bb_window).std()
+                    history['Upper_BB'] = history['SMA20'] + (history['StdDev'] * 2)
+                    history['Lower_BB'] = history['SMA20'] - (history['StdDev'] * 2)
+
+                    spy = yf.Ticker("SPY")
+                    spy_hist = spy.history(period="1y")
+
                     fig = go.Figure()
-                
-                    # Main Candlestick
+
+                    # Add Bollinger Bands (Added first so they are behind candlesticks)
+                    fig.add_trace(go.Scatter(x=history.index, y=history['Upper_BB'], 
+                                             line=dict(color='rgba(173, 216, 230, 0.2)', width=1), 
+                                             showlegend=False, name="Upper Band"))
+                    fig.add_trace(go.Scatter(x=history.index, y=history['Lower_BB'], 
+                                             line=dict(color='rgba(173, 216, 230, 0.2)', width=1), 
+                                             fill='tonexty', fillcolor='rgba(173, 216, 230, 0.05)', 
+                                             showlegend=False, name="Lower Band"))
+                    fig.add_trace(go.Scatter(x=history.index, y=history['SMA20'], 
+                                             line=dict(color='rgba(255, 255, 255, 0.2)', width=1, dash='dash'), 
+                                             name="20-Day SMA"))
+
+                    # Add Main Candlestick Chart
                     fig.add_trace(go.Candlestick(
-                        x=display_df.index,
-                        open=display_df['Open'],
-                        high=display_df['High'],
-                        low=display_df['Low'],
-                        close=display_df['Close'],
-                        name='Price Action'
+                        x=history.index, open=history['Open'], high=history['High'], 
+                        low=history['Low'], close=history['Close'], name=f"{ticker_input}"
                     ))
-                
-                    # Add Technical Bands (using display_df which already contains calculated columns)
-                    fig.add_trace(go.Scatter(x=display_df.index, y=display_df['SMA20'], line=dict(color='orange', width=1), name='SMA20'))
-                    fig.add_trace(go.Scatter(x=display_df.index, y=display_df['Upper Band'], line=dict(color='rgba(173, 216, 230, 0.5)', width=0), showlegend=False))
-                    fig.add_trace(go.Scatter(x=display_df.index, y=display_df['Lower Band'], line=dict(color='rgba(173, 216, 230, 0.5)', width=0), fill='tonexty', name='Bollinger Bands'))
-                
-                    # 4. Layout Improvements (Added Range Selector Buttons)
+
+                    # Add S&P 500 Line
+                    fig.add_trace(go.Scatter(
+                        x=spy_hist.index, y=spy_hist['Close'], 
+                        name="S&P 500", 
+                        line=dict(color='rgba(255, 255, 255, 0.4)', width=2, dash='dot'),
+                        yaxis="y2"
+                    ))
+
                     fig.update_layout(
-                        template="plotly_dark",
-                        xaxis_rangeslider_visible=False,
-                        height=600,
-                        margin=dict(l=10, r=10, t=30, b=10),
-                        xaxis=dict(
-                            rangeselector=dict(
-                                buttons=list([
-                                    dict(count=1, label="1m", step="month", stepmode="backward"),
-                                    dict(count=3, label="3m", step="month", stepmode="backward"),
-                                    dict(count=6, label="6m", step="month", stepmode="backward"),
-                                    dict(step="all", label="All")
-                                ])
-                            ),
-                            type="date"
-                        )
+                        template="plotly_dark", xaxis_rangeslider_visible=False, height=500,
+                        margin=dict(l=10, r=10, t=10, b=10),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        yaxis=dict(title="Stock Price ($)"),
+                        yaxis2=dict(title="S&P 500 ($)", overlaying="y", side="right", showgrid=False)
                     )
                     
-                    st.plotly_chart(fig, use_container_width=True)                    
                     # Performance Summary
                     stock_perf = ((history['Close'].iloc[-1] - history['Close'].iloc[0]) / history['Close'].iloc[0]) * 100
                     spy_perf = ((spy_hist['Close'].iloc[-1] - spy_hist['Close'].iloc[0]) / spy_hist['Close'].iloc[0]) * 100
